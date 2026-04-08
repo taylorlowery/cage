@@ -5,7 +5,8 @@ TEST_OUT = test_runner
 
 
 SRC = main.c src/agent.c
-TEST_SRC = src/agent.c test/test_agent.c test/vendor/unity/unity.c
+TEST_FILES = $(wildcard test/test_*.c)
+TEST_SRC = src/agent.c $(TEST_FILES) test/vendor/unity/unity.c
 
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT)
