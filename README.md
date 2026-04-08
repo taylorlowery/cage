@@ -10,6 +10,16 @@ I chose this project because:
 - I might have to write my own JSON parser.
 - I'll have to do some socket programming to make the calls to the LLM, especially if I want to support streaming mode. 
 - I might have to do some multi-processing or multithreading if I want to make this more like the kind of dynamic TUI application we're all used to by now, where we'd be able to interrupt the agent, add context, etc.
+- Some kind of logging?
 - I plan to make sure all the functionality is suitably tested in code. 
 
-All of these seem
+These just seem like some good intermediate C skills to have to figure out.
+
+# Prereqs
+
+Following along with Thorsten's article, I just plan to use the anthropic API. You'll need to set your API key as an environment variable before you run the program:
+
+```bash
+EXPORT ANTHROPIC_API_KEY=<your api key>
+./cage
+```
