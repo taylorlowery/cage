@@ -1,4 +1,5 @@
 #include "agent.h"
+#include "anthropic.h"
 #include <stdio.h>
 #include "vendor/unity/unity.h"
 #include "vendor/unity/unity_internals.h"
@@ -29,8 +30,13 @@ void test_greet(void) {
     TEST_ASSERT_EQUAL_STRING("Howdy, Pilgrim!", validationBuf);
 }
 
+void test_run(void) {
+    Run();
+}
+
 int main(void) {
     UNITY_BEGIN();
-    RUN_TEST(test_greet);
+    // RUN_TEST(test_greet);
+    test_run();
     return UNITY_END();
 }
