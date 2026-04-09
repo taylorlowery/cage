@@ -4,9 +4,9 @@ OUT = cage
 TEST_OUT = test_runner
 
 
-SRC = main.c src/agent.c
+SRC = main.c src/agent.c src/anthropic.c
 TEST_FILES = $(wildcard test/test_*.c)
-TEST_SRC = src/agent.c $(TEST_FILES) test/vendor/unity/unity.c
+TEST_SRC = src/agent.c src/anthropic.c $(TEST_FILES) test/vendor/unity/unity.c
 
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT)
