@@ -63,19 +63,29 @@ void runInference(char *model, int max_tokens, struct Message *messages, int mes
     curl_easy_setopt(curl, CURLOPT_URL, ANTHROPIC_MESSAGES_URL);
 
     // Add the require headers
-    struct curl_slist *chunk = NULL;
-    // TODO: get API key from env
-    chunk = curl_slist_append(chunk, "x-api-key: <my-api-key>");
-    chunk = curl_slist_append(chunk, "anthropic-version: 2023-06-01");
-    chunk = curl_slist_append(chunk, "content-type: application/json");
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+    struct curl_slist *headers = NULL;
+    // get API key from env
+    char *anthropic_api_key = getenv("ANTHROPIC_API_KEY");
+    if (NULL == anthropic_api_key) {
+        fprintf(stderr, "ANTHROPIC_API_KEY environment variable not set.\n");
+        return;
+    }
+    char headerBuf[1024];
+    sprintf(headerBuf, "x-api-key: %s", anthropic_api_key);
+    headers = curl_slist_append(headers, headerBuf);
+    headers = curl_slist_append(headers, "anthropic-version: 2023-06-01");
+    headers = curl_slist_append(headers, "content-type: application/json");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
 
+    // perform curl
+    result = curl_easy_perform(curl);
 
+    fprintf(stdout, "%s\n", headers.memory);
 
-    // just to see...
-    // since this is a char array, freeing it will cause a crash
-    fprintf(stdout, "%s\n", data);
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
 }
 
 // prepare messages and pass thadem to runInference()

@@ -17,7 +17,7 @@ These just seem like some good intermediate C skills to have to figure out.
 
 # Prereqs
 
-Following along with Thorsten's article, I just plan to use the anthropic API. You'll need to set your API key as an environment variable before you run the program:
+Following along with Thorsten's article, I just plan to use the anthropic API. You'll need to set your API key as an environment variable (or source it from your own dotenv) before you run the program:
 
 ```bash
 EXPORT ANTHROPIC_API_KEY=<your api key>
