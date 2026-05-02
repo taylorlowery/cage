@@ -20,6 +20,7 @@ void test_post(void) {
         HTTP_GET,
         "example.com",
         "80",
+        NULL,
         body,
         strlen(body),
         stdout,

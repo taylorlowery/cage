@@ -37,7 +37,7 @@ int get_status_code_from_response_body(char *resp_body) {
 // post() sends a POST request to a given host (eg, "http://example.com"),
 // and returns a pointer to a response object.
 // The caller is responsible for freeing the response.
-HTTPResponse *post(HttpMethod http_method, char *host, char *port, char* body, size_t body_len, FILE *output_stream, FILE *error_stream){
+HTTPResponse *post(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, const size_t body_len, FILE *output_stream, FILE *error_stream){
     HTTPResponse *resp = NULL;
     int sockfd;
     int numbytes;
@@ -95,10 +95,11 @@ HTTPResponse *post(HttpMethod http_method, char *host, char *port, char* body, s
     // finally send our body
     char request[MAXDATASIZE];
     const char *method_str = http_method_to_str(http_method);
+    const char *path_str = (NULL == path || strlen(path) == 0) ? "/" : path;
     int request_len = snprintf(
         request,
         sizeof(request),
-        "%s /v1/messages HTTP/1.1\r\n"
+        "%s %s HTTP/1.1\r\n"
         "Host: %s\r\n"
         "Content-Type: application/json\r\n"
         "Content-Length: %zu\r\n"
@@ -106,6 +107,7 @@ HTTPResponse *post(HttpMethod http_method, char *host, char *port, char* body, s
         "\r\n"
         "%s",
         method_str,
+        path_str,
         host,
         body_len,
         body
