@@ -65,7 +65,7 @@ int send_all(int socket_fd, char *buf, int buf_len) {
 // post() sends a POST request to a given host (eg, "http://example.com"),
 // and returns a pointer to a response object.
 // The caller is responsible for freeing the response.
-HTTPResponse *post(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, const size_t body_len, FILE *output_stream, FILE *error_stream){
+HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, const size_t body_len, FILE *output_stream, FILE *error_stream){
     HTTPResponse *resp = NULL;
     int sockfd;
     int bytes_received;

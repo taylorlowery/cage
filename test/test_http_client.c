@@ -14,13 +14,31 @@ void tearDown(void) {
 }
 
 // happy path test http client post
-void test_post(void) {
-    char *body = "{\"test\": \"data\"}";
-    HTTPResponse *resp = post(
+void test_http_client_request_get(void) {
+    HTTPResponse *resp = http_request(
         HTTP_GET,
         "example.com",
         "80",
         NULL,
+        NULL,
+        0,
+        stdout,
+        stderr
+    );
+
+    TEST_ASSERT_NOT_NULL(resp);
+    if (resp) {
+        TEST_ASSERT_EQUAL_INT(200, resp->status_code);
+    }
+}
+
+void test_http_client_request_post(void) {
+    char *body = "{\"test\": \"data\"}";
+    HTTPResponse *resp = http_request(
+        HTTP_POST,
+        "httpbin.org",
+        "80",
+        "/post",
         body,
         strlen(body),
         stdout,
@@ -30,7 +48,7 @@ void test_post(void) {
     TEST_ASSERT_NOT_NULL(resp);
     if (resp) {
         TEST_ASSERT_EQUAL_INT(200, resp->status_code);
-        fprintf(stdout, "body: %s\n", resp->body);
+        fprintf(stdout, "post response body: %s", resp->body);
         free(resp->body);
         free(resp);
     }
@@ -38,6 +56,7 @@ void test_post(void) {
 
 int main(void) {
     UNITY_BEGIN();
-    RUN_TEST(test_post);
+    RUN_TEST(test_http_client_request_get);
+    RUN_TEST(test_http_client_request_post);
     return UNITY_END();
 }
