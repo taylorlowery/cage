@@ -82,7 +82,7 @@ void runInference(char *model, int max_tokens, struct Message *messages, int mes
     // perform curl
     result = curl_easy_perform(curl);
 
-    fprintf(stdout, "%s\n", headers.memory);
+    fprintf(stdout, "%s\n", headers->data);
 
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);

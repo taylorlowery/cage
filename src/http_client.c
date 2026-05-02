@@ -11,6 +11,18 @@
 
 #define MAXDATASIZE 4096
 
+char *http_method_to_str(HttpMethod http_method) {
+    switch (http_method) {
+        case HTTP_GET:
+            return "GET";
+        case HTTP_POST:
+            return "POST";
+        default:
+            return "ERROR";
+    }
+}
+
+
 void *get_in_addr(struct sockaddr *sa) {
     if (sa->sa_family == AF_INET) {
         return &(((struct sockaddr_in*)sa)->sin_addr);
@@ -18,10 +30,14 @@ void *get_in_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+int get_status_code_from_response_body(char *resp_body) {
+    return 200;
+}
+
 // post() sends a POST request to a given host (eg, "http://example.com"),
 // and returns a pointer to a response object.
 // The caller is responsible for freeing the response.
-HTTPResponse *post(char *host, char *port, char* body, size_t body_len, FILE *output_stream, FILE *error_stream){
+HTTPResponse *post(HttpMethod http_method, char *host, char *port, char* body, size_t body_len, FILE *output_stream, FILE *error_stream){
     HTTPResponse *resp = NULL;
     int sockfd;
     int numbytes;
@@ -57,7 +73,7 @@ HTTPResponse *post(char *host, char *port, char* body, size_t body_len, FILE *ou
             s,
             sizeof(s)
         );
-        fprintf(output_stream, "Attempting connection to %s\n!", s);
+        fprintf(output_stream, "Attempting connection to %s...\n", s);
 
         if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             perror("client: connect");
@@ -72,9 +88,39 @@ HTTPResponse *post(char *host, char *port, char* body, size_t body_len, FILE *ou
         return NULL;
     }
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof(s));
-    fprintf(output_stream, "Connected to %s\n", s);
+    fprintf(output_stream, "Connected to %s!\n", s);
 
     freeaddrinfo(servinfo);
+
+    // finally send our body
+    char request[MAXDATASIZE];
+    const char *method_str = http_method_to_str(http_method);
+    int request_len = snprintf(
+        request,
+        sizeof(request),
+        "%s /v1/messages HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: %zu\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "%s",
+        method_str,
+        host,
+        body_len,
+        body
+    );
+
+    size_t total = 0;
+    while (total < (size_t)request_len) {
+        ssize_t sent = send(sockfd, request + total, request_len - total, 0);
+        if (-1 == sent) {
+            perror("send");
+            close(sockfd);
+            return NULL;
+        }
+        total += sent;
+    }
 
     if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
         perror("recv");
@@ -82,8 +128,26 @@ HTTPResponse *post(char *host, char *port, char* body, size_t body_len, FILE *ou
     }
 
     buf[numbytes] = '\0';
-
     close(sockfd);
 
-    return resp; // TODO: return http response, probably my own struct
+    resp = malloc(sizeof(HTTPResponse));
+    if (NULL == resp) {
+        perror("malloc HTTPResponse");
+        return NULL;
+    }
+
+    int resp_status_code = get_status_code_from_response_body(buf);
+
+    char *resp_body = strstr(buf, "\r\n\r\n");
+    if (NULL == resp_body) {
+        perror("strstr on resp body");
+        return NULL;
+    }
+
+    resp->status_code = resp_status_code;
+    resp->body = strdup(resp_body);
+    resp->body_length = numbytes;
+    resp->headers = NULL;
+
+    return resp;
 }
