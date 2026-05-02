@@ -23,6 +23,8 @@ char *http_method_to_str(HttpMethod http_method) {
 }
 
 
+// get_in_addr populates a sockaddr_in or sockaddr_in6 struct
+// with the IP address of the given sockaddr struct.
 void *get_in_addr(struct sockaddr *sa) {
     if (sa->sa_family == AF_INET) {
         return &(((struct sockaddr_in*)sa)->sin_addr);
@@ -30,9 +32,35 @@ void *get_in_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-int get_status_code_from_response_body(char *resp_body) {
+// parse the HTTP status code from a raw http response body
+int get_status_code_from_response_body(char *http_resp_raw) {
+    // TODO: actually do this
+    // just iterate through the body til the first space
+    // as the code is always right after it.
     return 200;
 }
+
+// send_all sends a string buffer to a socket
+// and returns the total number of bytes successfully sent.
+int send_all(int socket_fd, char *buf, int buf_len) {
+    size_t total_bytes_sent = 0;
+    int remaining_byes = buf_len;
+    int n = 0;
+
+    while (total_bytes_sent < buf_len) {
+        n = send(socket_fd, buf + total_bytes_sent, remaining_byes, 0);
+        if (-1 == n) {
+            // TODO: handle error
+            // return -1?
+            break;
+        }
+        total_bytes_sent += n;
+        remaining_byes -= n;
+    }
+
+    return total_bytes_sent;
+}
+
 
 // post() sends a POST request to a given host (eg, "http://example.com"),
 // and returns a pointer to a response object.
@@ -40,7 +68,7 @@ int get_status_code_from_response_body(char *resp_body) {
 HTTPResponse *post(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, const size_t body_len, FILE *output_stream, FILE *error_stream){
     HTTPResponse *resp = NULL;
     int sockfd;
-    int numbytes;
+    int bytes_received;
     struct addrinfo hints, *servinfo, *p;
     int status;
     char s[INET6_ADDRSTRLEN];
@@ -93,43 +121,50 @@ HTTPResponse *post(const HttpMethod http_method, const char *host, const char *p
     freeaddrinfo(servinfo);
 
     // finally send our body
-    char request[MAXDATASIZE];
+    char headers[MAXDATASIZE];
     const char *method_str = http_method_to_str(http_method);
     const char *path_str = (NULL == path || strlen(path) == 0) ? "/" : path;
-    int request_len = snprintf(
-        request,
-        sizeof(request),
+    int headers_len = snprintf(
+        headers,
+        sizeof(headers),
         "%s %s HTTP/1.1\r\n"
         "Host: %s\r\n"
         "Content-Type: application/json\r\n"
         "Content-Length: %zu\r\n"
         "Connection: close\r\n"
-        "\r\n"
-        "%s",
+        "\r\n",
         method_str,
         path_str,
         host,
-        body_len,
-        body
+        body_len
     );
 
-    size_t total = 0;
-    while (total < (size_t)request_len) {
-        ssize_t sent = send(sockfd, request + total, request_len - total, 0);
-        if (-1 == sent) {
-            perror("send");
+    // send headers
+    int bytes_sent = send_all(sockfd, headers, headers_len);
+    if (-1 == bytes_sent) {
+        perror("send headers");
+        close(sockfd);
+        return NULL;
+    }
+
+    // send body, if necessary
+    if (NULL != body && 0 < body_len) {
+        int bytes_sent = send_all(sockfd, body, body_len);
+        if (-1 == bytes_sent) {
+            perror("send body");
             close(sockfd);
             return NULL;
         }
-        total += sent;
     }
 
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
+
+    // receive and parse response
+    if ((bytes_received = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
         perror("recv");
         return NULL;
     }
 
-    buf[numbytes] = '\0';
+    buf[bytes_received] = '\0';
     close(sockfd);
 
     resp = malloc(sizeof(HTTPResponse));
@@ -148,7 +183,7 @@ HTTPResponse *post(const HttpMethod http_method, const char *host, const char *p
 
     resp->status_code = resp_status_code;
     resp->body = strdup(resp_body);
-    resp->body_length = numbytes;
+    resp->body_length = bytes_received;
     resp->headers = NULL;
 
     return resp;
