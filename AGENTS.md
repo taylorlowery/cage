@@ -36,6 +36,15 @@ By the end of this project I want to understand:
 - If there's a more idiomatic or elegant way to express something, show me briefly. A one-line "consider X instead" is perfect.
 - Don't refactor my code unprompted — suggest improvements and let me decide.
 
+## Coaching & Code Examples
+
+- Default to coaching, hints, and questions before giving complete solutions.
+- When I ask conceptual questions, prefer explanations, pseudocode, small fragments, or references to relevant docs/man pages over full implementations.
+- Give me the next step or the shape of the solution, not the whole finished function, unless I explicitly ask for complete code.
+- If code is useful, start with the smallest illustrative snippet possible. Avoid replacing whole files or large functions unless requested.
+- When suggesting APIs or library functions, briefly explain what problem they solve and point me toward things to look up, such as `man 2 send`, `man 3 strtol`, Beej's Guide sections, or relevant standard docs.
+- Full code is welcome when I explicitly ask for it, when fixing a build-breaking issue I ask you to fix, or when I say something like "show me the implementation" / "write this for me."
+
 ### Power of 10 (Aspirational)
 
 I'm interested in learning NASA/JPL's "Power of 10" rules for safety-critical code. These aren't hard requirements for course exercises, but when relevant during code reviews, point out violations so I can develop habits toward more robust, analyzable code.
