@@ -32,6 +32,31 @@ void test_http_client_request_get(void) {
     }
 }
 
+// implicitly validate response code parsing by querying an invalid endpoint.
+// example.com returns a 405 when receivng a POST.
+void test_post_to_invalid_endpoint_returns_error_status(void) {
+    char *body = "{\"test\":\"data\"}";
+    HTTPResponse *resp = http_request(
+        HTTP_POST,
+        "example.com",
+        "80",
+        "/post",
+        body,
+        strlen(body),
+        stdout,
+        stderr
+    );
+
+    TEST_ASSERT_NOT_NULL(resp);
+    if (resp) {
+        TEST_ASSERT_EQUAL_INT(405, resp->status_code);
+        fprintf(stdout, "post response body: %s", resp->body);
+        free(resp->body);
+        free(resp);
+    }
+
+}
+
 void test_http_client_request_post(void) {
     char *body = "{\"test\": \"data\"}";
     HTTPResponse *resp = http_request(
@@ -58,5 +83,6 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_http_client_request_get);
     RUN_TEST(test_http_client_request_post);
+    RUN_TEST(test_post_to_invalid_endpoint_returns_error_status);
     return UNITY_END();
 }
