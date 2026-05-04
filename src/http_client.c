@@ -1,4 +1,6 @@
 #include "http_client.h"
+#include <stdatomic.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +11,7 @@
 #include <unistd.h>
 #include <netdb.h>
 
-#define MAXDATASIZE 4096
+#define DEFAULT_BUFFER_SIZE 4096
 
 char *http_method_to_str(HttpMethod http_method) {
     switch (http_method) {
@@ -44,9 +46,9 @@ int get_status_code_from_response_body(char *http_resp_raw) {
 
 // send_all sends a string buffer to a socket
 // and returns the total number of bytes successfully sent.
-int send_all(const int socket_fd, const char *buf, const size_t buf_len) {
+ssize_t send_all(const int socket_fd, const char *buf, const size_t buf_len) {
     size_t total_bytes_sent = 0;
-    int remaining_byes = buf_len;
+    ssize_t remaining_byes = buf_len;
     int n = 0;
 
     while (total_bytes_sent < buf_len) {
@@ -83,13 +85,11 @@ static void clean_up_http_request_resources(struct addrinfo *servinfo, int sockf
 HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, const size_t body_len, FILE *output_stream, FILE *error_stream){
     HTTPResponse *resp = NULL;
     int sockfd = -1;
-    int bytes_received = 0;
     struct addrinfo hints;
     struct addrinfo *servinfo = NULL;
     struct addrinfo *p = NULL;
     int status = 0;
     char s[INET6_ADDRSTRLEN] = {0};
-    char buf[MAXDATASIZE] = {0};
 
     // zero out hints
     void *memset_res = memset(&hints, 0, sizeof(hints));
@@ -140,7 +140,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     fprintf(output_stream, "Connected to %s!\n", s);
 
     // finally send our body
-    char headers[MAXDATASIZE];
+    char headers[DEFAULT_BUFFER_SIZE];
     const char *method_str = http_method_to_str(http_method);
     const char *path_str = (NULL == path || strlen(path) == 0) ? "/" : path;
     snprintf(
@@ -177,14 +177,44 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     }
 
 
-    // receive and parse response
-    if ((bytes_received = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-        perror("recv");
+    ssize_t total_bytes_received = 0;
+    size_t buf_capacity = 4096;
+    char *buf = NULL;
+    buf = calloc(buf_capacity, sizeof(char));
+    if (NULL == buf) {
+        perror("calloc buf");
         clean_up_http_request_resources(servinfo, sockfd, resp);
         return NULL;
     }
 
-    buf[bytes_received] = '\0';
+    // receive and parse response
+    ssize_t bytes_received = 0;
+    while ((bytes_received = recv(sockfd, buf + total_bytes_received, buf_capacity - total_bytes_received - 1, 0)) >= 0) {
+        if (bytes_received == 0) {
+            break;
+        }
+        if (bytes_received == -1) {
+            perror("recv");
+            clean_up_http_request_resources(servinfo, sockfd, resp);
+            return NULL;
+        }
+
+        // if necessary, resize buffer
+        if ((size_t)total_bytes_received >= buf_capacity - 1) {
+            buf_capacity = buf_capacity * 2;
+            buf = realloc(buf, buf_capacity);
+            if (NULL == buf) {
+                perror("realloc buf");
+                clean_up_http_request_resources(servinfo, sockfd, resp);
+                return NULL;
+            }
+        }
+
+
+        total_bytes_received += bytes_received;
+    }
+
+    buf[total_bytes_received] = '\0';
 
     resp = calloc(1, sizeof(HTTPResponse));
     if (NULL == resp) {
