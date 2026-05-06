@@ -46,32 +46,32 @@ int get_status_code_from_response_body(char *http_resp_raw) {
 
 // send_all sends a string buffer to a socket
 // and returns the total number of bytes successfully sent.
-ssize_t send_all(const int socket_fd, const char *buf, const size_t buf_len) {
-    size_t total_bytes_sent = 0;
+ssize_t send_all(const int socket_fd, const char *buf, const size_t buf_len, size_t *total_bytes_sent) {
     ssize_t remaining_byes = buf_len;
     int n = 0;
 
-    while (total_bytes_sent < buf_len) {
-        n = send(socket_fd, buf + total_bytes_sent, remaining_byes, 0);
+    while ((size_t)*total_bytes_sent < buf_len) {
+        n = send(socket_fd, buf + *total_bytes_sent, remaining_byes, 0);
         if (-1 == n) {
-            // TODO: handle error
-            // return -1?
-            break;
+            return -1;
         }
-        total_bytes_sent += n;
+        *total_bytes_sent += n;
         remaining_byes -= n;
     }
 
-    return total_bytes_sent;
+    return 0;
 }
 
 // cleans up the resources allocated for an http request.
-static void clean_up_http_request_resources(struct addrinfo *servinfo, int sockfd, HTTPResponse *resp) {
+static void clean_up_http_request_resources(struct addrinfo *servinfo, int sockfd, HTTPResponse *resp, char *recv_buffer) {
     if (NULL != servinfo) {
         freeaddrinfo(servinfo);
     }
     if (sockfd >= 0) {
         close(sockfd);
+    }
+    if (NULL != recv_buffer) {
+        free(recv_buffer);
     }
     if (NULL != resp) {
         free(resp->body);
@@ -91,11 +91,17 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     int status = 0;
     char s[INET6_ADDRSTRLEN] = {0};
 
+    size_t total_bytes_sent = 0;
+
+    ssize_t total_bytes_received = 0;
+    size_t buf_capacity = 4096;
+    char *recv_buffer = NULL;
+
     // zero out hints
     void *memset_res = memset(&hints, 0, sizeof(hints));
     if (NULL == memset_res) {
         fprintf(output_stream, "Failed to zero out memory for hints\n");
-        clean_up_http_request_resources(servinfo, sockfd, resp);
+        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
         return NULL;
     }
     hints.ai_family = AF_UNSPEC;
@@ -103,7 +109,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
 
     if ((status = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
         fprintf(error_stream, "getaddrinfo: %s\n", gai_strerror(status));
-        clean_up_http_request_resources(servinfo, sockfd, resp);
+        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
         return NULL;
     }
 
@@ -133,7 +139,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
 
     if (p == NULL) {
         fprintf(error_stream, "Failed to connect to %s :( \n", host);
-        clean_up_http_request_resources(servinfo, sockfd, resp);
+        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
         return NULL;
     }
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof(s));
@@ -159,76 +165,63 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     );
 
     // send headers
-    int header_bytes_sent = send_all(sockfd, headers, strlen(headers));
+    int header_bytes_sent = send_all(sockfd, headers, strlen(headers), &total_bytes_sent);
     if (-1 == header_bytes_sent) {
         perror("send headers");
-        clean_up_http_request_resources(servinfo, sockfd, resp);
+        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
         return NULL;
     }
 
     // send body, if necessary
     if (NULL != body && 0 < body_len) {
-        int body_bytes_sent = send_all(sockfd, body, body_len);
+        total_bytes_sent = 0;
+        int body_bytes_sent = send_all(sockfd, body, body_len, &total_bytes_sent);
         if (-1 == body_bytes_sent) {
             perror("send body");
-            clean_up_http_request_resources(servinfo, sockfd, resp);
+            clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
             return NULL;
         }
     }
 
 
-    ssize_t total_bytes_received = 0;
-    size_t buf_capacity = 4096;
-    char *buf = NULL;
-    buf = calloc(buf_capacity, sizeof(char));
-    if (NULL == buf) {
+    recv_buffer = calloc(buf_capacity, sizeof(char));
+    if (NULL == recv_buffer) {
         perror("calloc buf");
-        clean_up_http_request_resources(servinfo, sockfd, resp);
+        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
         return NULL;
     }
 
     // receive and parse response
     ssize_t bytes_received = 0;
-    while ((bytes_received = recv(sockfd, buf + total_bytes_received, buf_capacity - total_bytes_received - 1, 0)) >= 0) {
-        if (bytes_received == 0) {
-            break;
-        }
-        if (bytes_received == -1) {
-            perror("recv");
-            clean_up_http_request_resources(servinfo, sockfd, resp);
-            return NULL;
-        }
-
+    while ((bytes_received = recv(sockfd, recv_buffer + total_bytes_received, buf_capacity - total_bytes_received - 1, 0)) > 0) {
+        total_bytes_received += bytes_received;
         // if necessary, resize buffer
         if ((size_t)total_bytes_received >= buf_capacity - 1) {
             buf_capacity = buf_capacity * 2;
-            buf = realloc(buf, buf_capacity);
-            if (NULL == buf) {
+            recv_buffer = realloc(recv_buffer, buf_capacity);
+            if (NULL == recv_buffer) {
                 perror("realloc buf");
-                clean_up_http_request_resources(servinfo, sockfd, resp);
+                clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
                 return NULL;
             }
         }
-
-
-        total_bytes_received += bytes_received;
     }
 
-    buf[total_bytes_received] = '\0';
+    recv_buffer[total_bytes_received] = '\0';
 
     resp = calloc(1, sizeof(HTTPResponse));
     if (NULL == resp) {
         perror("malloc HTTPResponse");
-        clean_up_http_request_resources(servinfo, sockfd, resp);
+        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
         return NULL;
     }
 
-    int resp_status_code = get_status_code_from_response_body(buf);
+    int resp_status_code = get_status_code_from_response_body(recv_buffer);
 
-    char *resp_body = strstr(buf, "\r\n\r\n");
+    char *resp_body = strstr(recv_buffer, "\r\n\r\n");
     if (NULL == resp_body) {
-        perror("strstr on resp body");
-        clean_up_http_request_resources(servinfo, sockfd, resp);
+        fprintf(error_stream, "strstr on resp body");
+        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
         return NULL;
     }
 
@@ -240,6 +233,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     resp->headers = NULL;
 
     // clean up all resources except the response, which will be returned.
-    clean_up_http_request_resources(servinfo, sockfd, NULL);
+    clean_up_http_request_resources(servinfo, sockfd, NULL, recv_buffer);
+
     return resp;
 }
