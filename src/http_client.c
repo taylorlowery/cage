@@ -46,16 +46,16 @@ int get_status_code_from_response_body(char *http_resp_raw) {
 
 // send_all sends a string buffer to a socket
 // and returns the total number of bytes successfully sent.
-ssize_t send_all(const int socket_fd, const char *buf, const size_t buf_len, size_t *total_bytes_sent) {
+ssize_t send_all(const int socket_fd, const char *buf, const size_t buf_len){
     ssize_t remaining_byes = buf_len;
     int n = 0;
-
-    while ((size_t)*total_bytes_sent < buf_len) {
-        n = send(socket_fd, buf + *total_bytes_sent, remaining_byes, 0);
+    ssize_t total_bytes_sent = 0;
+    while ((size_t)total_bytes_sent < buf_len) {
+        n = send(socket_fd, buf + total_bytes_sent, remaining_byes, 0);
         if (-1 == n) {
             return -1;
         }
-        *total_bytes_sent += n;
+        total_bytes_sent += n;
         remaining_byes -= n;
     }
 
@@ -90,8 +90,6 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     struct addrinfo *p = NULL;
     int status = 0;
     char s[INET6_ADDRSTRLEN] = {0};
-
-    size_t total_bytes_sent = 0;
 
     ssize_t total_bytes_received = 0;
     size_t buf_capacity = 4096;
@@ -165,7 +163,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     );
 
     // send headers
-    int header_bytes_sent = send_all(sockfd, headers, strlen(headers), &total_bytes_sent);
+    int header_bytes_sent = send_all(sockfd, headers, strlen(headers));
     if (-1 == header_bytes_sent) {
         perror("send headers");
         clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
@@ -174,8 +172,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
 
     // send body, if necessary
     if (NULL != body && 0 < body_len) {
-        total_bytes_sent = 0;
-        int body_bytes_sent = send_all(sockfd, body, body_len, &total_bytes_sent);
+        int body_bytes_sent = send_all(sockfd, body, body_len);
         if (-1 == body_bytes_sent) {
             perror("send body");
             clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
