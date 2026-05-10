@@ -1,5 +1,4 @@
 #include "http_client.h"
-#include <stdatomic.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,8 +10,11 @@
 #include <unistd.h>
 #include <netdb.h>
 
+// arbitrary buffer size
 #define DEFAULT_BUFFER_SIZE 4096
 
+// http_method_to_str receives a HttpMethod enum
+// and returns the appropriate string for use in an HTTP request.
 char *http_method_to_str(HttpMethod http_method) {
     switch (http_method) {
         case HTTP_GET:
@@ -44,22 +46,41 @@ int get_status_code_from_response_body(char *http_resp_raw) {
     return status_code;
 }
 
-// send_all sends a string buffer to a socket
-// and returns the total number of bytes successfully sent.
+void build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length) {
+    const char *method_str = http_method_to_str(http_method);
+    const char *path_str = (NULL == path || strlen(path) == 0) ? "/" : path;
+    snprintf(
+        header_buf,
+        buf_size,
+        "%s %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: %zu\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        method_str,
+        path_str,
+        host,
+        content_length
+    );
+}
+
+// send_all sends a string buffer to a socket,
+// returning -1 on error and 0 on success.
 ssize_t send_all(const int socket_fd, const char *buf, const size_t buf_len){
-    ssize_t remaining_byes = buf_len;
-    int n = 0;
+    size_t remaining_bytes = buf_len;
+    ssize_t n = 0;
     ssize_t total_bytes_sent = 0;
     while ((size_t)total_bytes_sent < buf_len) {
-        n = send(socket_fd, buf + total_bytes_sent, remaining_byes, 0);
+        n = send(socket_fd, buf + total_bytes_sent, remaining_bytes, 0);
         if (-1 == n) {
             return -1;
         }
         total_bytes_sent += n;
-        remaining_byes -= n;
+        remaining_bytes -= n;
     }
 
-    return 0;
+    return total_bytes_sent;
 }
 
 // cleans up the resources allocated for an http request.
@@ -82,7 +103,7 @@ static void clean_up_http_request_resources(struct addrinfo *servinfo, int sockf
 // post() sends a POST request to a given host (eg, "http://example.com"),
 // and returns a pointer to a response object.
 // The caller is responsible for freeing the response.
-HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, const size_t body_len, FILE *output_stream, FILE *error_stream){
+HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream){
     HTTPResponse *resp = NULL;
     int sockfd = -1;
     struct addrinfo hints;
@@ -95,11 +116,14 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     size_t buf_capacity = 4096;
     char *recv_buffer = NULL;
 
+    size_t body_len = (NULL != body) ? strlen(body) : 0;
+
     // zero out hints
     void *memset_res = memset(&hints, 0, sizeof(hints));
     if (NULL == memset_res) {
-        fprintf(output_stream, "Failed to zero out memory for hints\n");
-        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
+        fprintf(error_stream, "Failed to zero out memory for hints\n");
+        // returning directly without calling cleanup because nothing has been initialized yet.
+        // If the code changes, we may need to call cleanup here.
         return NULL;
     }
     hints.ai_family = AF_UNSPEC;
@@ -118,12 +142,23 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
             continue;
         }
 
-        inet_ntop(
+        const char *addr_str = inet_ntop(
             p->ai_family,
             get_in_addr((struct sockaddr *)p->ai_addr),
             s,
             sizeof(s)
         );
+
+        // addr_str should never be NULL because by this point
+        // we have successfully retrieved the address with `getaddrinfo()`.
+        // We will check anyway in case of something going really wrong:
+        if (NULL == addr_str) {
+            // TODO: more informative log line
+            fprintf(error_stream, "Failed to get addr as string in inet_ntop");
+            // try the next IP
+            continue;
+        }
+
         fprintf(output_stream, "Attempting connection to %s...\n", s);
 
         if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
@@ -145,25 +180,10 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
 
     // finally send our body
     char headers[DEFAULT_BUFFER_SIZE];
-    const char *method_str = http_method_to_str(http_method);
-    const char *path_str = (NULL == path || strlen(path) == 0) ? "/" : path;
-    snprintf(
-        headers,
-        sizeof(headers),
-        "%s %s HTTP/1.1\r\n"
-        "Host: %s\r\n"
-        "Content-Type: application/json\r\n"
-        "Content-Length: %zu\r\n"
-        "Connection: close\r\n"
-        "\r\n",
-        method_str,
-        path_str,
-        host,
-        body_len
-    );
+    build_headers(headers, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len);
 
     // send headers
-    int header_bytes_sent = send_all(sockfd, headers, strlen(headers));
+    ssize_t header_bytes_sent = send_all(sockfd, headers, strlen(headers));
     if (-1 == header_bytes_sent) {
         perror("send headers");
         clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
@@ -172,7 +192,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
 
     // send body, if necessary
     if (NULL != body && 0 < body_len) {
-        int body_bytes_sent = send_all(sockfd, body, body_len);
+        ssize_t body_bytes_sent = send_all(sockfd, body, body_len);
         if (-1 == body_bytes_sent) {
             perror("send body");
             clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
@@ -205,6 +225,8 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     }
 
     recv_buffer[total_bytes_received] = '\0';
+
+    fprintf(output_stream, "[DEBUG]: %s", recv_buffer);
 
     resp = calloc(1, sizeof(HTTPResponse));
     if (NULL == resp) {
