@@ -150,10 +150,7 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
 }
 
 // cleans up the resources allocated for an http request.
-static void clean_up_http_request_resources(struct addrinfo *servinfo, int sockfd, HTTPResponse *resp, char *recv_buffer) {
-    if (NULL != servinfo) {
-        freeaddrinfo(servinfo);
-    }
+static void clean_up_http_request_resources(int sockfd, HTTPResponse *resp, char *recv_buffer) {
     if (sockfd >= 0) {
         close(sockfd);
     }
@@ -166,11 +163,9 @@ static void clean_up_http_request_resources(struct addrinfo *servinfo, int sockf
     }
 }
 
-// post() sends a POST request to a given host (eg, "http://example.com"),
-// and returns a pointer to a response object.
-// The caller is responsible for freeing the response.
-HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream){
-    HTTPResponse *resp = NULL;
+// http connect attempts to connect to a socket and returns its socket fd,
+// or returns -1 on error.
+int http_connect(const char *host, const char *port, FILE *output_stream, FILE *error_stream) {
     int sockfd = -1;
     struct addrinfo hints;
     struct addrinfo *servinfo = NULL;
@@ -178,18 +173,13 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     int status = 0;
     char s[INET6_ADDRSTRLEN] = {0};
 
-    size_t buf_capacity = 4096;
-    char *recv_buffer = NULL;
-
-    size_t body_len = (NULL != body) ? strlen(body) : 0;
-
     // zero out hints
     void *memset_res = memset(&hints, 0, sizeof(hints));
     if (NULL == memset_res) {
         fprintf(error_stream, "Failed to zero out memory for hints\n");
         // returning directly without calling cleanup because nothing has been initialized yet.
         // If the code changes, we may need to call cleanup here.
-        return NULL;
+        return -1;
     }
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -198,7 +188,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
         fprintf(error_stream, "getaddrinfo: %s\n", gai_strerror(status));
         // returning directly without calling cleanup because nothing has been initialized yet.
         // If the code changes, we may need to call cleanup here.
-        return NULL;
+        return -1;
     }
 
     // loop through results and connect to one
@@ -238,11 +228,35 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
 
     if (p == NULL) {
         fprintf(error_stream, "Failed to connect to %s :( \n", host);
-        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
-        return NULL;
+        freeaddrinfo(servinfo);
+        if (-1 < sockfd) {
+            close(sockfd);
+        }
+        return -1;
     }
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof(s));
     fprintf(output_stream, "Connected to %s!\n", s);
+
+    freeaddrinfo(servinfo);
+    return sockfd;
+}
+
+// post() sends a POST request to a given host (eg, "http://example.com"),
+// and returns a pointer to a response object.
+// The caller is responsible for freeing the response.
+HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream){
+    HTTPResponse *resp = NULL;
+    int sockfd = -1;
+
+    size_t buf_capacity = 4096;
+    char *recv_buffer = NULL;
+
+    size_t body_len = (NULL != body) ? strlen(body) : 0;
+
+    sockfd = http_connect(host, port, output_stream, error_stream);
+    if (-1 == sockfd) {
+        return NULL;
+    }
 
     // finally send our body
     char headers[DEFAULT_BUFFER_SIZE];
@@ -252,7 +266,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     ssize_t header_bytes_sent = send_all(sockfd, headers, strlen(headers));
     if (-1 == header_bytes_sent) {
         perror("send headers");
-        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
+        clean_up_http_request_resources(sockfd, resp, recv_buffer);
         return NULL;
     }
 
@@ -261,7 +275,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
         ssize_t body_bytes_sent = send_all(sockfd, body, body_len);
         if (-1 == body_bytes_sent) {
             perror("send body");
-            clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
+            clean_up_http_request_resources(sockfd, resp, recv_buffer);
             return NULL;
         }
     }
@@ -270,7 +284,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     recv_buffer = calloc(buf_capacity, sizeof(char));
     if (NULL == recv_buffer) {
         perror("calloc buf");
-        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
+        clean_up_http_request_resources(sockfd, resp, recv_buffer);
         return NULL;
     }
 
@@ -278,7 +292,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     ssize_t total_bytes_received = recv_all(sockfd, &recv_buffer, &buf_capacity);
     if (-1 == total_bytes_received) {
         perror("Error on recv");
-        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
+        clean_up_http_request_resources(sockfd, resp, recv_buffer);
         return NULL;
     }
 
@@ -287,11 +301,11 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     // even though the final cleanup and return of resp
     // is hypothetically identical if resp is NULL.
     if (NULL == resp) {
-        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
+        clean_up_http_request_resources(sockfd, resp, recv_buffer);
         return NULL;
     }
 
     // clean up all resources except the response, which will be returned.
-    clean_up_http_request_resources(servinfo, sockfd, NULL, recv_buffer);
+    clean_up_http_request_resources(sockfd, NULL, recv_buffer);
     return resp;
 }
