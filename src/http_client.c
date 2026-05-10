@@ -37,13 +37,20 @@ void *get_in_addr(struct sockaddr *sa) {
 }
 
 // parse the HTTP status code from a raw http response body
-int get_status_code_from_response_body(char *http_resp_raw) {
+int get_status_code_from_response_body(const char *http_resp_raw) {
     char *first_space = strchr(http_resp_raw, ' ');
     if (NULL == first_space) {
         return -1;
     }
-    int status_code = (int)strtol(first_space + 1, NULL, 10);
-    return status_code;
+
+    char *end = NULL;
+    long status_code = (int)strtol(first_space + 1, &end, 10);
+    if (end == first_space + 1) {
+        // no digits were consumed -- code parsing failed.
+        return -1;
+    }
+
+    return (int)status_code;
 }
 
 void build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length) {
@@ -83,6 +90,65 @@ ssize_t send_all(const int socket_fd, const char *buf, const size_t buf_len){
     return total_bytes_sent;
 }
 
+ssize_t recv_all(int sockfd, char **recv_buffer, size_t *buf_capacity) {
+    ssize_t total_bytes_received = 0;
+    ssize_t bytes_received = 0;
+    while ((bytes_received = recv(sockfd, *recv_buffer + total_bytes_received, *buf_capacity - total_bytes_received - 1, 0)) > 0) {
+        total_bytes_received += bytes_received;
+        // if necessary, resize buffer
+        if ((size_t)total_bytes_received >= *buf_capacity - 1) {
+            *buf_capacity = (*buf_capacity) * 2;
+            char *tmp = realloc(*recv_buffer, *buf_capacity);
+            if (NULL == tmp) {
+                return -1;
+            }
+            *recv_buffer = tmp;
+        }
+    }
+
+    if (-1 == bytes_received) {
+        // recv() failed
+        return -1;
+    }
+
+    (*recv_buffer)[total_bytes_received] = '\0';
+    return total_bytes_received;
+}
+
+// TODO: return something meaningful.
+HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buffer, FILE *error_stream) {
+    HTTPResponse *http_response = calloc(1, sizeof(HTTPResponse));
+    if (NULL == http_response) {
+        perror("calloc HTTPResponse");
+        return NULL;
+    }
+
+    int resp_status_code = get_status_code_from_response_body(raw_response_buffer);
+
+    char *resp_body = strstr(raw_response_buffer, "\r\n\r\n");
+    if (NULL == resp_body) {
+        fprintf(error_stream, "strstr on resp body");
+        free(http_response);
+        return NULL;
+    }
+
+    http_response->status_code = resp_status_code;
+    // skip four spaces to avoid duplicating '\r\n\r\n'
+    http_response->body = strdup(resp_body + 4);
+    // validate strdup succeeded (no OOM)
+    if (NULL == http_response) {
+        fprintf(error_stream, "strdup on response body");
+        free(http_response);
+        return NULL;
+    }
+
+    http_response->body_length = strlen(http_response->body);
+    // TODO: parse headers from response and store in resp->headers
+    http_response->headers = NULL;
+
+    return http_response;
+}
+
 // cleans up the resources allocated for an http request.
 static void clean_up_http_request_resources(struct addrinfo *servinfo, int sockfd, HTTPResponse *resp, char *recv_buffer) {
     if (NULL != servinfo) {
@@ -112,7 +178,6 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     int status = 0;
     char s[INET6_ADDRSTRLEN] = {0};
 
-    ssize_t total_bytes_received = 0;
     size_t buf_capacity = 4096;
     char *recv_buffer = NULL;
 
@@ -131,7 +196,8 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
 
     if ((status = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
         fprintf(error_stream, "getaddrinfo: %s\n", gai_strerror(status));
-        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
+        // returning directly without calling cleanup because nothing has been initialized yet.
+        // If the code changes, we may need to call cleanup here.
         return NULL;
     }
 
@@ -209,50 +275,23 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     }
 
     // receive and parse response
-    ssize_t bytes_received = 0;
-    while ((bytes_received = recv(sockfd, recv_buffer + total_bytes_received, buf_capacity - total_bytes_received - 1, 0)) > 0) {
-        total_bytes_received += bytes_received;
-        // if necessary, resize buffer
-        if ((size_t)total_bytes_received >= buf_capacity - 1) {
-            buf_capacity = buf_capacity * 2;
-            recv_buffer = realloc(recv_buffer, buf_capacity);
-            if (NULL == recv_buffer) {
-                perror("realloc buf");
-                clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
-                return NULL;
-            }
-        }
+    ssize_t total_bytes_received = recv_all(sockfd, &recv_buffer, &buf_capacity);
+    if (-1 == total_bytes_received) {
+        perror("Error on recv");
+        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
+        return NULL;
     }
 
-    recv_buffer[total_bytes_received] = '\0';
-
-    fprintf(output_stream, "[DEBUG]: %s", recv_buffer);
-
-    resp = calloc(1, sizeof(HTTPResponse));
+    resp = parse_response_body_to_http_response(recv_buffer, error_stream);
+    // explicitly handle NULL(error) response from parse,
+    // even though the final cleanup and return of resp
+    // is hypothetically identical if resp is NULL.
     if (NULL == resp) {
-        perror("malloc HTTPResponse");
         clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
         return NULL;
     }
-
-    int resp_status_code = get_status_code_from_response_body(recv_buffer);
-
-    char *resp_body = strstr(recv_buffer, "\r\n\r\n");
-    if (NULL == resp_body) {
-        fprintf(error_stream, "strstr on resp body");
-        clean_up_http_request_resources(servinfo, sockfd, resp, recv_buffer);
-        return NULL;
-    }
-
-    resp->status_code = resp_status_code;
-    // skip four spaces to avoid duplicating '\r\n\r\n'
-    resp->body = strdup(resp_body + 4);
-    resp->body_length = strlen(resp->body);
-    // TODO: parse headers from response and store in resp->headers
-    resp->headers = NULL;
 
     // clean up all resources except the response, which will be returned.
     clean_up_http_request_resources(servinfo, sockfd, NULL, recv_buffer);
-
     return resp;
 }
