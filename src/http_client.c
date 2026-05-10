@@ -136,7 +136,7 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
     // skip four spaces to avoid duplicating '\r\n\r\n'
     http_response->body = strdup(resp_body + 4);
     // validate strdup succeeded (no OOM)
-    if (NULL == http_response) {
+    if (NULL == http_response->body) {
         fprintf(error_stream, "strdup on response body");
         free(http_response);
         return NULL;
