@@ -149,20 +149,6 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
     return http_response;
 }
 
-// cleans up the resources allocated for an http request.
-static void clean_up_http_request_resources(int sockfd, HTTPResponse *resp, char *recv_buffer) {
-    if (sockfd >= 0) {
-        close(sockfd);
-    }
-    if (NULL != recv_buffer) {
-        free(recv_buffer);
-    }
-    if (NULL != resp) {
-        free(resp->body);
-        free(resp);
-    }
-}
-
 // http connect attempts to connect to a socket and returns its socket fd,
 // or returns -1 on error.
 int http_connect(const char *host, const char *port, FILE *output_stream, FILE *error_stream) {
@@ -241,24 +227,45 @@ int http_connect(const char *host, const char *port, FILE *output_stream, FILE *
     return sockfd;
 }
 
+HTTPResponse *http_receive(int sockfd, FILE *error_stream) {
+    size_t buf_capacity = 4096;
+    char *recv_buffer = NULL;
+
+    recv_buffer = calloc(buf_capacity, sizeof(char));
+    if (NULL == recv_buffer) {
+        perror("calloc buf");
+        free(recv_buffer);
+        return NULL;
+    }
+
+    // receive and parse response
+    ssize_t total_bytes_received = recv_all(sockfd, &recv_buffer, &buf_capacity);
+    if (-1 == total_bytes_received) {
+        perror("Error on recv");
+        free(recv_buffer);
+        return NULL;
+    }
+
+    HTTPResponse *resp = NULL;
+    resp = parse_response_body_to_http_response(recv_buffer, error_stream);
+    free(recv_buffer);
+    return resp;
+}
+
 // post() sends a POST request to a given host (eg, "http://example.com"),
 // and returns a pointer to a response object.
 // The caller is responsible for freeing the response.
 HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream){
-    HTTPResponse *resp = NULL;
     int sockfd = -1;
-
-    size_t buf_capacity = 4096;
-    char *recv_buffer = NULL;
-
     size_t body_len = (NULL != body) ? strlen(body) : 0;
 
+    // conect
     sockfd = http_connect(host, port, output_stream, error_stream);
     if (-1 == sockfd) {
         return NULL;
     }
 
-    // finally send our body
+    // send
     char headers[DEFAULT_BUFFER_SIZE];
     build_headers(headers, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len);
 
@@ -266,7 +273,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     ssize_t header_bytes_sent = send_all(sockfd, headers, strlen(headers));
     if (-1 == header_bytes_sent) {
         perror("send headers");
-        clean_up_http_request_resources(sockfd, resp, recv_buffer);
+        close(sockfd);
         return NULL;
     }
 
@@ -275,37 +282,22 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
         ssize_t body_bytes_sent = send_all(sockfd, body, body_len);
         if (-1 == body_bytes_sent) {
             perror("send body");
-            clean_up_http_request_resources(sockfd, resp, recv_buffer);
+            close(sockfd);
             return NULL;
         }
     }
 
 
-    recv_buffer = calloc(buf_capacity, sizeof(char));
-    if (NULL == recv_buffer) {
-        perror("calloc buf");
-        clean_up_http_request_resources(sockfd, resp, recv_buffer);
-        return NULL;
-    }
-
-    // receive and parse response
-    ssize_t total_bytes_received = recv_all(sockfd, &recv_buffer, &buf_capacity);
-    if (-1 == total_bytes_received) {
-        perror("Error on recv");
-        clean_up_http_request_resources(sockfd, resp, recv_buffer);
-        return NULL;
-    }
-
-    resp = parse_response_body_to_http_response(recv_buffer, error_stream);
+    // receive response
+    HTTPResponse *resp = http_receive(sockfd, error_stream);
     // explicitly handle NULL(error) response from parse,
     // even though the final cleanup and return of resp
     // is hypothetically identical if resp is NULL.
     if (NULL == resp) {
-        clean_up_http_request_resources(sockfd, resp, recv_buffer);
+        close(sockfd);
         return NULL;
     }
 
-    // clean up all resources except the response, which will be returned.
-    clean_up_http_request_resources(sockfd, NULL, recv_buffer);
+    close(sockfd);
     return resp;
 }
