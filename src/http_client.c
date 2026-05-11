@@ -1,4 +1,5 @@
 #include "http_client.h"
+#include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -227,14 +228,39 @@ int http_connect(const char *host, const char *port, FILE *output_stream, FILE *
     return sockfd;
 }
 
-HTTPResponse *http_receive(int sockfd, FILE *error_stream) {
-    size_t buf_capacity = 4096;
-    char *recv_buffer = NULL;
+ssize_t http_send(int sockfd, const HttpMethod http_method, const char *path, const char *host, const char *body, FILE *error_stream) {
+    ssize_t total_bytes_sent = 0;
+    size_t body_len = (NULL != body) ? strlen(body) : 0;
+    char headers[DEFAULT_BUFFER_SIZE];
+    build_headers(headers, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len);
 
-    recv_buffer = calloc(buf_capacity, sizeof(char));
+    // send headers
+    ssize_t header_bytes_sent = send_all(sockfd, headers, strlen(headers));
+    if (-1 == header_bytes_sent) {
+        fprintf(error_stream, "send headers: %s\n", strerror(errno));
+        return -1;
+    }
+    total_bytes_sent += header_bytes_sent;
+
+    // send body, if necessary
+    if (NULL != body && 0 < body_len) {
+        ssize_t body_bytes_sent = send_all(sockfd, body, body_len);
+        if (-1 == body_bytes_sent) {
+            fprintf(error_stream, "send body: %s\n", strerror(errno));
+            return -1;
+        }
+        total_bytes_sent += body_bytes_sent;
+    }
+
+    return total_bytes_sent;
+}
+
+HTTPResponse *http_receive(int sockfd, FILE *error_stream) {
+    // arbitrary starting buf capacity
+    size_t buf_capacity = 4096;
+    char *recv_buffer = calloc(buf_capacity, sizeof(char));
     if (NULL == recv_buffer) {
         perror("calloc buf");
-        free(recv_buffer);
         return NULL;
     }
 
@@ -246,8 +272,7 @@ HTTPResponse *http_receive(int sockfd, FILE *error_stream) {
         return NULL;
     }
 
-    HTTPResponse *resp = NULL;
-    resp = parse_response_body_to_http_response(recv_buffer, error_stream);
+    HTTPResponse *resp = parse_response_body_to_http_response(recv_buffer, error_stream);
     free(recv_buffer);
     return resp;
 }
@@ -256,48 +281,22 @@ HTTPResponse *http_receive(int sockfd, FILE *error_stream) {
 // and returns a pointer to a response object.
 // The caller is responsible for freeing the response.
 HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream){
-    int sockfd = -1;
-    size_t body_len = (NULL != body) ? strlen(body) : 0;
-
-    // conect
-    sockfd = http_connect(host, port, output_stream, error_stream);
+    // connect
+    int sockfd = http_connect(host, port, output_stream, error_stream);
     if (-1 == sockfd) {
         return NULL;
     }
 
     // send
-    char headers[DEFAULT_BUFFER_SIZE];
-    build_headers(headers, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len);
-
-    // send headers
-    ssize_t header_bytes_sent = send_all(sockfd, headers, strlen(headers));
-    if (-1 == header_bytes_sent) {
-        perror("send headers");
+    ssize_t total_bytes_sent = http_send(sockfd, http_method, path, host, body, error_stream);
+    if (-1 == total_bytes_sent) {
         close(sockfd);
         return NULL;
     }
-
-    // send body, if necessary
-    if (NULL != body && 0 < body_len) {
-        ssize_t body_bytes_sent = send_all(sockfd, body, body_len);
-        if (-1 == body_bytes_sent) {
-            perror("send body");
-            close(sockfd);
-            return NULL;
-        }
-    }
-
 
     // receive response
+    // on err, response will be NULL -- caller will have to handle it.
     HTTPResponse *resp = http_receive(sockfd, error_stream);
-    // explicitly handle NULL(error) response from parse,
-    // even though the final cleanup and return of resp
-    // is hypothetically identical if resp is NULL.
-    if (NULL == resp) {
-        close(sockfd);
-        return NULL;
-    }
-
     close(sockfd);
     return resp;
 }
