@@ -22,8 +22,9 @@ char *http_method_to_str(HttpMethod http_method) {
             return "GET";
         case HTTP_POST:
             return "POST";
+        // TODO: handle other http methods
         default:
-            return "ERROR";
+            return NULL;
     }
 }
 
@@ -54,8 +55,12 @@ int get_status_code_from_response_body(const char *http_resp_raw) {
     return (int)status_code;
 }
 
-void build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length) {
+int build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length) {
     const char *method_str = http_method_to_str(http_method);
+    if (NULL == method_str) {
+        header_buf = NULL;
+        return -1;
+    }
     const char *path_str = (NULL == path || strlen(path) == 0) ? "/" : path;
     snprintf(
         header_buf,
@@ -71,6 +76,8 @@ void build_headers(char *header_buf, size_t buf_size, const char *path, const Ht
         host,
         content_length
     );
+
+    return 0;
 }
 
 // send_all sends a string buffer to a socket,
@@ -232,7 +239,11 @@ ssize_t http_send(int sockfd, const HttpMethod http_method, const char *path, co
     ssize_t total_bytes_sent = 0;
     size_t body_len = (NULL != body) ? strlen(body) : 0;
     char headers[DEFAULT_BUFFER_SIZE];
-    build_headers(headers, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len);
+    int success_code = build_headers(headers, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len);
+    if (0 != success_code) {
+        fprintf(error_stream, "build_headers: %s\n", strerror(success_code));
+        return -1;
+    }
 
     // send headers
     ssize_t header_bytes_sent = send_all(sockfd, headers, strlen(headers));
