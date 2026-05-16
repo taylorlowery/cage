@@ -206,7 +206,7 @@ Connection *http_connect(const char *host, const char *port, FILE *output_stream
     char s[INET6_ADDRSTRLEN] = {0};
 
     // zero out hints
-    void *memset_res = memset(&hints, 0, sizeof(hints));
+    memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
@@ -246,88 +246,7 @@ Connection *http_connect(const char *host, const char *port, FILE *output_stream
         if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             perror("client: connect");
             close(sockfd);
-            sockfd = -1;Connection *http_connect(const char *host, const char *port, FILE *output_stream, FILE *error_stream) {
-                int sockfd = -1;
-                struct addrinfo hints;
-                struct addrinfo *servinfo = NULL;
-                struct addrinfo *p = NULL;
-                int status = 0;
-                char s[INET6_ADDRSTRLEN] = {0};
-
-                // zero out hints
-                memseinet_nt(&hints, 0, sizeof(hints));
-                hints.ai_family = AF_UNSPEC;
-                hints.ai_socktype = SOCK_STREAM;
-
-                if ((status = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
-                    fprintf(error_stream, "getaddrinfo: %s\n", gai_strerror(status));
-                    // returning directly without calling cleanup because nothing has been initialized yet.
-                    // If the code changes, we may need to call cleanup here.
-                    return NULL;
-                }
-
-                // loop through results and connect to one
-                for (p = servinfo; p != NULL; p = p->ai_next) {
-                    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-                        perror("client: socket");
-                        continue;
-                    }
-
-                    const char *addr_str = inet_ntop(
-                        p->ai_family,
-                        get_in_addr((struct sockaddr *)p->ai_addr),
-                        s,
-                        sizeof(s)
-                    );
-
-                    // addr_str should never be NULL because by this point
-                    // we have successfully retrieved the address with `getaddrinfo()`.
-                    // We will check anyway in case of something going really wrong:
-                    if (NULL == addr_str) {
-                        // TODO: more informative log line
-                        fprintf(error_stream, "Failed to get addr as string in inet_ntop");
-                        close(sockfd);
-                        sockfd = -1;
-                        // try the next IP
-                        continue;
-                    }
-
-                    fprintf(output_stream, "Attempting connection to %s...\n", s);
-
-                    if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-                        perror("client: connect");
-                        close(sockfd);
-                        sockfd = -1;
-                        continue;
-                    }
-                    break;
-                }
-
-                if (p == NULL) {
-                    fprintf(error_stream, "Failed to connect to %s :( \n", host);
-                    freeaddrinfo(servinfo);
-                    if (-1 < sockfd) {
-                        close(sockfd);
-                    }
-                    return NULL;
-                }
-                inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof(s));
-                fprintf(output_stream, "Connected to %s!\n", s);
-
-                freeaddrinfo(servinfo);
-
-                // allocate connection
-                Connection *conn = NULL;
-                conn = calloc(1, sizeof(Connection));
-                if (NULL == conn) {
-                    fprintf(error_stream, "Failed to allocate memory for connection\n");
-                    close(sockfd);
-                    return NULL;
-                }
-
-                conn->sockfd = sockfd;
-                return conn;
-            }
+            sockfd = -1;
             continue;
         }
         break;
@@ -355,6 +274,7 @@ Connection *http_connect(const char *host, const char *port, FILE *output_stream
     }
 
     conn->sockfd = sockfd;
+    conn->ssl = NULL;
     return conn;
 }
 
@@ -418,6 +338,43 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     // connect
     Connection *conn = http_connect(host, port, output_stream, error_stream);
     if (NULL == conn || -1 == conn->sockfd) {
+        fprintf(error_stream, "Failed to connect to %s:%s\n", host, port);
+        return NULL;
+    }
+
+    // send
+    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, body, error_stream);
+    if (-1 == total_bytes_sent) {
+        close(conn->sockfd);
+        free(conn);
+        return NULL;
+    }
+
+    // receive response
+    // on err, response will be NULL -- caller will have to handle it.
+    HTTPResponse *resp = http_receive(conn, error_stream);
+    close(conn->sockfd);
+    free(conn);
+    return resp;
+}
+
+// ssl_connect is a WIP.
+// Currently in placeholder mode while I get other stuff sorted.
+// Caller has to free the connection.
+Connection *ssl_connect() {
+    Connection *conn = calloc(1, sizeof(Connection));
+
+    conn->sockfd = -1;
+    conn->ssl = NULL;
+
+    return conn;
+}
+
+HTTPResponse *https_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream) {
+    // connect
+    Connection *conn = ssl_connect();
+    if (NULL == conn || NULL == conn->ssl) {
+        fprintf(error_stream, "Failed to connect to %s:%s\n", host, port);
         return NULL;
     }
 
