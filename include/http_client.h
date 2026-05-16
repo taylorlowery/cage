@@ -16,5 +16,6 @@ typedef struct {
 } HTTPResponse;
 
 HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream);
+HTTPResponse *https_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream);
 
 #endif

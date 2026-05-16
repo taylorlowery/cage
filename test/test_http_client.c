@@ -31,6 +31,24 @@ void test_http_client_request_get(void) {
     }
 }
 
+// happy path test for https get with TLS
+void test_https_client_request_get(void) {
+    HTTPResponse *resp = https_request(
+        HTTP_GET,
+        "example.com",
+        "443",
+        "/",
+        NULL,
+        stdout,
+        stderr
+    );
+
+    TEST_ASSERT_NOT_NULL(resp);
+    if (resp) {
+        TEST_ASSERT_EQUAL_INT(200, resp->status_code);
+    }
+}
+
 // implicitly validate response code parsing by querying an invalid endpoint.
 // example.com returns a 405 when receivng a POST.
 void test_post_to_invalid_endpoint_returns_error_status(void) {
@@ -79,6 +97,7 @@ void test_http_client_request_post(void) {
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_http_client_request_get);
+    RUN_TEST(test_https_client_request_get);
     RUN_TEST(test_http_client_request_post);
     RUN_TEST(test_post_to_invalid_endpoint_returns_error_status);
     return UNITY_END();

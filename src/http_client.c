@@ -1,5 +1,7 @@
 #include "http_client.h"
 #include <errno.h>
+#include <openssl/prov_ssl.h>
+#include <openssl/tls1.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +24,18 @@ typedef struct {
     int sockfd;
     SSL *ssl;
 } Connection;
+
+static void free_connection(Connection *conn) {
+    if (NULL != conn->ssl) {
+        SSL_shutdown(conn->ssl);
+        SSL_free(conn->ssl);
+    }
+    if (1 <= conn->sockfd) {
+        close(conn->sockfd);
+    }
+    free(conn);
+}
+
 
 // conn_write writes from a buffer to an http or https connection.
 // if the SSL pointer on the connection is not NULL, defaults to https,
@@ -345,34 +359,89 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     // send
     ssize_t total_bytes_sent = http_send(conn, http_method, path, host, body, error_stream);
     if (-1 == total_bytes_sent) {
-        close(conn->sockfd);
-        free(conn);
+        free_connection(conn);
         return NULL;
     }
 
     // receive response
     // on err, response will be NULL -- caller will have to handle it.
     HTTPResponse *resp = http_receive(conn, error_stream);
-    close(conn->sockfd);
-    free(conn);
+    free_connection(conn);
     return resp;
 }
+
+
+SSL_CTX *create_ssl_ctx(FILE *error_stream) {
+
+    SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
+    if (NULL == ctx){
+        fprintf(error_stream, "Failed to create SSL context.\n");
+        return NULL;
+    }
+
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+
+    // set default certificate store
+    if (!SSL_CTX_set_default_verify_paths(ctx)) {
+        fprintf(error_stream, "Failed to set default certificate store.\n");
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+
+    if (!SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION)) {
+        fprintf(error_stream, "Failed to set the minimum TLS protocol version.\n");
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+
+    return ctx;
+}
+
 
 // ssl_connect is a WIP.
 // Currently in placeholder mode while I get other stuff sorted.
 // Caller has to free the connection.
-Connection *ssl_connect() {
-    Connection *conn = calloc(1, sizeof(Connection));
+Connection *ssl_connect(const char* host, const char *port, FILE *output_stream, FILE *error_stream) {
 
-    conn->sockfd = -1;
-    conn->ssl = NULL;
+    SSL_CTX *ctx = create_ssl_ctx(error_stream);
+    if (NULL == ctx) {
+        return NULL;
+    }
 
+    SSL *ssl = SSL_new(ctx);
+    if (NULL == ssl) {
+        fprintf(error_stream, "Failed to create the SSL object.\n");
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+    SSL_CTX_free(ctx);
+
+    // create connection object with connected socket.
+    Connection *conn = http_connect(host, port, output_stream, error_stream);
+    if (NULL == conn || -1 == conn->sockfd) {
+        fprintf(error_stream, "Failed to create connection object\n");
+        SSL_free(ssl);
+        return NULL;
+    }
+
+    SSL_set_fd(ssl, conn->sockfd);
+    SSL_set_tlsext_host_name(ssl, host);
+
+    // TLS HANDSHAAAAAAKE!!!
+    if (SSL_connect(ssl) <= 0) {
+        fprintf(error_stream, "SSL connection failed!\n");
+        SSL_free(ssl);
+        free_connection(conn);
+        return NULL;
+    }
+
+    conn->ssl = ssl;
     return conn;
 }
 
 HTTPResponse *https_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream) {
     // connect
-    Connection *conn = ssl_connect();
+    Connection *conn = ssl_connect(host, port, output_stream, error_stream);
     if (NULL == conn || NULL == conn->ssl) {
         fprintf(error_stream, "Failed to connect to %s:%s\n", host, port);
         return NULL;
@@ -381,15 +450,13 @@ HTTPResponse *https_request(const HttpMethod http_method, const char *host, cons
     // send
     ssize_t total_bytes_sent = http_send(conn, http_method, path, host, body, error_stream);
     if (-1 == total_bytes_sent) {
-        close(conn->sockfd);
-        free(conn);
+        free_connection(conn);
         return NULL;
     }
 
     // receive response
     // on err, response will be NULL -- caller will have to handle it.
     HTTPResponse *resp = http_receive(conn, error_stream);
-    close(conn->sockfd);
-    free(conn);
+    free_connection(conn);
     return resp;
 }
