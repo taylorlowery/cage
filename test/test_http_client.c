@@ -28,6 +28,8 @@ void test_http_client_request_get(void) {
     TEST_ASSERT_NOT_NULL(resp);
     if (resp) {
         TEST_ASSERT_EQUAL_INT(200, resp->status_code);
+        free(resp->body);
+        free(resp);
     }
 }
 
@@ -46,6 +48,8 @@ void test_https_client_request_get(void) {
     TEST_ASSERT_NOT_NULL(resp);
     if (resp) {
         TEST_ASSERT_EQUAL_INT(200, resp->status_code);
+        free(resp->body);
+        free(resp);
     }
 }
 
@@ -93,6 +97,7 @@ void test_http_client_request_post(void) {
         free(resp);
     }
 }
+
 void test_https_client_request_post(void) {
     char *body = "{\"test\": \"data\"}";
     HTTPResponse *resp = https_request(

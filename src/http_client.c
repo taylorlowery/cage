@@ -1,7 +1,5 @@
 #include "http_client.h"
 #include <errno.h>
-#include <openssl/prov_ssl.h>
-#include <openssl/tls1.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
