@@ -10,9 +10,61 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 // arbitrary buffer size
 #define DEFAULT_BUFFER_SIZE 4096
+
+// Connection helper struct to assist in abstracting
+// http and https requests.
+typedef struct {
+    int sockfd;
+    SSL *ssl;
+} Connection;
+
+static void free_connection(Connection *conn) {
+    if (NULL != conn->ssl) {
+        SSL_shutdown(conn->ssl);
+        SSL_free(conn->ssl);
+    }
+    if (1 <= conn->sockfd) {
+        close(conn->sockfd);
+    }
+    free(conn);
+}
+
+
+// conn_write writes from a buffer to an http or https connection.
+// if the SSL pointer on the connection is not NULL, defaults to https,
+// and falls through to http otherwise,
+// returning the number of bytes successfully written to the connection.
+// Returns -1 if the connection's socket fd is -1.
+ssize_t conn_write(const Connection *conn, const char *buf, size_t buf_len) {
+    if (NULL != conn->ssl) {
+        return SSL_write(conn->ssl, buf, buf_len);
+    }
+    if (-1 == conn->sockfd) {
+        return -1;
+    }
+    return send(conn->sockfd, buf, buf_len, 0);
+}
+
+
+// conn_read reads from a connection into a provided buffer.
+// If the connection's SSL pointer is not NULL, defaults to https,
+// otherwise falling through to http,
+// returning the number of bytes successfuly read from the connection.
+// Returns -1 if the connection's socket fd is -1.
+ssize_t conn_read(const Connection *conn, char *buf, size_t buf_len) {
+    if (NULL != conn->ssl) {
+        return SSL_read(conn->ssl, buf, buf_len);
+    }
+    if (-1 == conn->sockfd) {
+        return -1;
+    }
+    return recv(conn->sockfd, buf, buf_len, 0);
+}
 
 // http_method_to_str receives a HttpMethod enum
 // and returns the appropriate string for use in an HTTP request.
@@ -22,11 +74,11 @@ char *http_method_to_str(HttpMethod http_method) {
             return "GET";
         case HTTP_POST:
             return "POST";
+        // TODO: handle other http methods
         default:
-            return "ERROR";
+            return NULL;
     }
 }
-
 
 // get_in_addr populates a sockaddr_in or sockaddr_in6 struct
 // with the IP address of the given sockaddr struct.
@@ -54,8 +106,11 @@ int get_status_code_from_response_body(const char *http_resp_raw) {
     return (int)status_code;
 }
 
-void build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length) {
+int build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length) {
     const char *method_str = http_method_to_str(http_method);
+    if (NULL == method_str) {
+        return -1;
+    }
     const char *path_str = (NULL == path || strlen(path) == 0) ? "/" : path;
     snprintf(
         header_buf,
@@ -71,16 +126,18 @@ void build_headers(char *header_buf, size_t buf_size, const char *path, const Ht
         host,
         content_length
     );
+
+    return 0;
 }
 
 // send_all sends a string buffer to a socket,
 // returning -1 on error and 0 on success.
-ssize_t send_all(const int socket_fd, const char *buf, const size_t buf_len){
+ssize_t send_all(const Connection *conn, const char *buf, const size_t buf_len){
     size_t remaining_bytes = buf_len;
     ssize_t n = 0;
     ssize_t total_bytes_sent = 0;
     while ((size_t)total_bytes_sent < buf_len) {
-        n = send(socket_fd, buf + total_bytes_sent, remaining_bytes, 0);
+        n = conn_write(conn, buf + total_bytes_sent, remaining_bytes);
         if (-1 == n) {
             return -1;
         }
@@ -91,10 +148,10 @@ ssize_t send_all(const int socket_fd, const char *buf, const size_t buf_len){
     return total_bytes_sent;
 }
 
-ssize_t recv_all(int sockfd, char **recv_buffer, size_t *buf_capacity) {
+ssize_t recv_all(const Connection *conn, char **recv_buffer, size_t *buf_capacity) {
     ssize_t total_bytes_received = 0;
     ssize_t bytes_received = 0;
-    while ((bytes_received = recv(sockfd, *recv_buffer + total_bytes_received, *buf_capacity - total_bytes_received - 1, 0)) > 0) {
+    while ((bytes_received = conn_read(conn, *recv_buffer + total_bytes_received, *buf_capacity - total_bytes_received - 1)) > 0) {
         total_bytes_received += bytes_received;
         // if necessary, resize buffer
         if ((size_t)total_bytes_received >= *buf_capacity - 1) {
@@ -152,7 +209,7 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
 
 // http connect attempts to connect to a socket and returns its socket fd,
 // or returns -1 on error.
-int http_connect(const char *host, const char *port, FILE *output_stream, FILE *error_stream) {
+Connection *http_connect(const char *host, const char *port, FILE *output_stream, FILE *error_stream) {
     int sockfd = -1;
     struct addrinfo hints;
     struct addrinfo *servinfo = NULL;
@@ -161,13 +218,7 @@ int http_connect(const char *host, const char *port, FILE *output_stream, FILE *
     char s[INET6_ADDRSTRLEN] = {0};
 
     // zero out hints
-    void *memset_res = memset(&hints, 0, sizeof(hints));
-    if (NULL == memset_res) {
-        fprintf(error_stream, "Failed to zero out memory for hints\n");
-        // returning directly without calling cleanup because nothing has been initialized yet.
-        // If the code changes, we may need to call cleanup here.
-        return -1;
-    }
+    memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
@@ -175,7 +226,7 @@ int http_connect(const char *host, const char *port, FILE *output_stream, FILE *
         fprintf(error_stream, "getaddrinfo: %s\n", gai_strerror(status));
         // returning directly without calling cleanup because nothing has been initialized yet.
         // If the code changes, we may need to call cleanup here.
-        return -1;
+        return NULL;
     }
 
     // loop through results and connect to one
@@ -219,23 +270,38 @@ int http_connect(const char *host, const char *port, FILE *output_stream, FILE *
         if (-1 < sockfd) {
             close(sockfd);
         }
-        return -1;
+        return NULL;
     }
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof(s));
     fprintf(output_stream, "Connected to %s!\n", s);
 
     freeaddrinfo(servinfo);
-    return sockfd;
+
+    // allocate connection
+    Connection *conn = NULL;
+    conn = calloc(1, sizeof(Connection));
+    if (NULL == conn) {
+        fprintf(error_stream, "Failed to allocate memory for connection\n");
+        return NULL;
+    }
+
+    conn->sockfd = sockfd;
+    conn->ssl = NULL;
+    return conn;
 }
 
-ssize_t http_send(int sockfd, const HttpMethod http_method, const char *path, const char *host, const char *body, FILE *error_stream) {
+ssize_t http_send(Connection *conn, const HttpMethod http_method, const char *path, const char *host, const char *body, FILE *error_stream) {
     ssize_t total_bytes_sent = 0;
     size_t body_len = (NULL != body) ? strlen(body) : 0;
     char headers[DEFAULT_BUFFER_SIZE];
-    build_headers(headers, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len);
+    int success_code = build_headers(headers, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len);
+    if (0 != success_code) {
+        fprintf(error_stream, "build_headers\n");
+        return -1;
+    }
 
     // send headers
-    ssize_t header_bytes_sent = send_all(sockfd, headers, strlen(headers));
+    ssize_t header_bytes_sent = send_all(conn, headers, strlen(headers));
     if (-1 == header_bytes_sent) {
         fprintf(error_stream, "send headers: %s\n", strerror(errno));
         return -1;
@@ -244,7 +310,7 @@ ssize_t http_send(int sockfd, const HttpMethod http_method, const char *path, co
 
     // send body, if necessary
     if (NULL != body && 0 < body_len) {
-        ssize_t body_bytes_sent = send_all(sockfd, body, body_len);
+        ssize_t body_bytes_sent = send_all(conn, body, body_len);
         if (-1 == body_bytes_sent) {
             fprintf(error_stream, "send body: %s\n", strerror(errno));
             return -1;
@@ -255,7 +321,7 @@ ssize_t http_send(int sockfd, const HttpMethod http_method, const char *path, co
     return total_bytes_sent;
 }
 
-HTTPResponse *http_receive(int sockfd, FILE *error_stream) {
+HTTPResponse *http_receive(Connection *conn, FILE *error_stream) {
     // arbitrary starting buf capacity
     size_t buf_capacity = 4096;
     char *recv_buffer = calloc(buf_capacity, sizeof(char));
@@ -265,7 +331,7 @@ HTTPResponse *http_receive(int sockfd, FILE *error_stream) {
     }
 
     // receive and parse response
-    ssize_t total_bytes_received = recv_all(sockfd, &recv_buffer, &buf_capacity);
+    ssize_t total_bytes_received = recv_all(conn, &recv_buffer, &buf_capacity);
     if (-1 == total_bytes_received) {
         perror("Error on recv");
         free(recv_buffer);
@@ -282,21 +348,113 @@ HTTPResponse *http_receive(int sockfd, FILE *error_stream) {
 // The caller is responsible for freeing the response.
 HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream){
     // connect
-    int sockfd = http_connect(host, port, output_stream, error_stream);
-    if (-1 == sockfd) {
+    Connection *conn = http_connect(host, port, output_stream, error_stream);
+    if (NULL == conn || -1 == conn->sockfd) {
+        fprintf(error_stream, "Failed to connect to %s:%s\n", host, port);
         return NULL;
     }
 
     // send
-    ssize_t total_bytes_sent = http_send(sockfd, http_method, path, host, body, error_stream);
+    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, body, error_stream);
     if (-1 == total_bytes_sent) {
-        close(sockfd);
+        free_connection(conn);
         return NULL;
     }
 
     // receive response
     // on err, response will be NULL -- caller will have to handle it.
-    HTTPResponse *resp = http_receive(sockfd, error_stream);
-    close(sockfd);
+    HTTPResponse *resp = http_receive(conn, error_stream);
+    free_connection(conn);
+    return resp;
+}
+
+
+SSL_CTX *create_ssl_ctx(FILE *error_stream) {
+
+    SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
+    if (NULL == ctx){
+        fprintf(error_stream, "Failed to create SSL context.\n");
+        return NULL;
+    }
+
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+
+    // set default certificate store
+    if (!SSL_CTX_set_default_verify_paths(ctx)) {
+        fprintf(error_stream, "Failed to set default certificate store.\n");
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+
+    if (!SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION)) {
+        fprintf(error_stream, "Failed to set the minimum TLS protocol version.\n");
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+
+    return ctx;
+}
+
+
+// ssl_connect is a WIP.
+// Currently in placeholder mode while I get other stuff sorted.
+// Caller has to free the connection.
+Connection *ssl_connect(const char* host, const char *port, FILE *output_stream, FILE *error_stream) {
+
+    SSL_CTX *ctx = create_ssl_ctx(error_stream);
+    if (NULL == ctx) {
+        return NULL;
+    }
+
+    SSL *ssl = SSL_new(ctx);
+    if (NULL == ssl) {
+        fprintf(error_stream, "Failed to create the SSL object.\n");
+        SSL_CTX_free(ctx);
+        return NULL;
+    }
+    SSL_CTX_free(ctx);
+
+    // create connection object with connected socket.
+    Connection *conn = http_connect(host, port, output_stream, error_stream);
+    if (NULL == conn || -1 == conn->sockfd) {
+        fprintf(error_stream, "Failed to create connection object\n");
+        SSL_free(ssl);
+        return NULL;
+    }
+
+    SSL_set_fd(ssl, conn->sockfd);
+    SSL_set_tlsext_host_name(ssl, host);
+
+    // TLS HANDSHAAAAAAKE!!!
+    if (SSL_connect(ssl) <= 0) {
+        fprintf(error_stream, "SSL connection failed!\n");
+        SSL_free(ssl);
+        free_connection(conn);
+        return NULL;
+    }
+
+    conn->ssl = ssl;
+    return conn;
+}
+
+HTTPResponse *https_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream) {
+    // connect
+    Connection *conn = ssl_connect(host, port, output_stream, error_stream);
+    if (NULL == conn || NULL == conn->ssl) {
+        fprintf(error_stream, "Failed to connect to %s:%s\n", host, port);
+        return NULL;
+    }
+
+    // send
+    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, body, error_stream);
+    if (-1 == total_bytes_sent) {
+        free_connection(conn);
+        return NULL;
+    }
+
+    // receive response
+    // on err, response will be NULL -- caller will have to handle it.
+    HTTPResponse *resp = http_receive(conn, error_stream);
+    free_connection(conn);
     return resp;
 }
