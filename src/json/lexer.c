@@ -1,17 +1,12 @@
 #include "json.h"
 #include <string.h>
 #include <stdbool.h>
+#include <assert.h>
 
 
 void initScanner(Scanner *scanner, const char *source) {
-    if (NULL == scanner) {
-        // TODO: crash? error?
-        return;
-    }
-    if (NULL == source) {
-        // TODO: crash? error?
-        return;
-    }
+    assert(NULL != scanner);
+    assert(NULL != source);
     scanner->start = source;
     scanner->current = source;
 }
@@ -79,12 +74,17 @@ static void skipWhitespace(Scanner *scanner) {
             default:
                 return;
         }
-        
     }
 }
 
 static Token string(Scanner *scanner) {
     while(peek(scanner) != '"' && !isAtEnd(scanner)) {
+        // if the next character is a backslash,
+        // skip it
+        if (peek(scanner) == '\\') {
+            advance(scanner);
+        }
+        // advance past the normal or escaped char
         advance(scanner);
     }
     if (isAtEnd(scanner)) {
@@ -102,6 +102,10 @@ static bool isAlpha(const char c) {
     return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || ('_' == c);
 }
 
+// number() attempts to tokenize a positive or negative number
+// from the scanner's current stream.
+// TODO: stricting parsing according to JSON specification,
+// ie, no leading zeroes for integers, support scientific notation.
 static Token number(Scanner *scanner) {
     while (isDigit(peek(scanner))) {
         advance(scanner);
@@ -163,6 +167,11 @@ Token scanToken(Scanner *scanner) {
         case ',': return makeToken(scanner, TOKEN_COMMA);
         case ':': return makeToken(scanner, TOKEN_COLON);
         case '"': return string(scanner);
+        case '-':
+            if (isDigit(peek(scanner))) {
+                return number(scanner);
+            }
+            return errorToken("expected digit after '-'");
     }
     
     return errorToken("Unexpected character.");

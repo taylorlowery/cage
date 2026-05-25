@@ -7,7 +7,10 @@ OUT = cage
 TEST_OUT = test_runner
 
 
-SRC = main.c src/agent.c src/http_client.c src/json.c
+SRC = main.c \
+		src/agent.c \
+		src/http_client.c \
+		src/json/lexer.c
 
 # TODO: support multiple simultaneous test binaries.
 # Because each Unity test module expects a setUp(), tearDown(), and main(),
@@ -15,7 +18,7 @@ SRC = main.c src/agent.c src/http_client.c src/json.c
 # For now, we'll just work on supporting the JSON parser while we develop that.
 # TEST_FILES = $(wildcard test/test_*.c)
 # TEST_SRC = src/agent.c src/http_client.c $(TEST_FILES) test/vendor/unity/unity.c
-TEST_SRC = src/agent.c src/http_client.c src/json.c test/test_json.c test/vendor/unity/unity.c
+TEST_SRC = src/agent.c src/http_client.c src/json/lexer.c test/test_json.c test/vendor/unity/unity.c
 
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)
