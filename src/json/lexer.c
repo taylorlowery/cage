@@ -88,7 +88,7 @@ static Token string(Scanner *scanner) {
         advance(scanner);
     }
     if (isAtEnd(scanner)) {
-        return errorToken("Unterminated string.");
+        return errorToken("unterminated string");
     }
     advance(scanner);
     return makeToken(scanner, TOKEN_STRING);
@@ -131,6 +131,9 @@ static TokenType checkKeyword(Scanner *scanner, const int start, const int lengt
 }
 
 static TokenType keyword(Scanner *scanner) {
+    while (isAlpha(peek(scanner))) {
+        advance(scanner);
+    }
     switch(scanner->start[0]) {
         case 't':
             return checkKeyword(scanner, 1, 3, "rue", TOKEN_TRUE);
@@ -174,5 +177,5 @@ Token scanToken(Scanner *scanner) {
             return errorToken("expected digit after '-'");
     }
     
-    return errorToken("Unexpected character.");
+    return errorToken("Unexpected character");
 }
