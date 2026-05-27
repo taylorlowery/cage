@@ -4,7 +4,7 @@
 #include <assert.h>
 
 
-void initScanner(Scanner *scanner, const char *source) {
+void init_scanner(Scanner *scanner, const char *source) {
     assert(NULL != scanner);
     assert(NULL != source);
     scanner->start = source;
@@ -13,12 +13,12 @@ void initScanner(Scanner *scanner, const char *source) {
 
 // checks whether we are at the end of the scanner stream,
 // based on whether the current char is the null terminator.
-static bool isAtEnd(Scanner *scanner) {
+static bool is_at_end(Scanner *scanner) {
     return *scanner->current == '\0';
 }
 
 // Generate a token object for a given tokentype.
-static Token makeToken(Scanner *scanner, TokenType type) {
+static Token make_token(Scanner *scanner, TokenType type) {
     Token token;
     token.type = type;
     token.start = scanner->start;
@@ -27,7 +27,7 @@ static Token makeToken(Scanner *scanner, TokenType type) {
 }
 
 // create a token object with a given error message.
-static Token errorToken(const char *message) {
+static Token error_token(const char *message) {
     Token token;
     token.type = TOKEN_ERROR;
     token.start = message;
@@ -35,9 +35,9 @@ static Token errorToken(const char *message) {
     return token;
 }
 
-// advance to the next character in the scanner stream. 
+// advance to the next character in the scanner stream.
 static char advance(Scanner *scanner) {
-    if (isAtEnd(scanner)) {
+    if (is_at_end(scanner)) {
         return '\0';
     }
     scanner->current++;
@@ -46,22 +46,22 @@ static char advance(Scanner *scanner) {
 
 // return the next character
 static char peek(Scanner *scanner) {
-    if (isAtEnd(scanner)) {
+    if (is_at_end(scanner)) {
         return '\0';
     }
     return *(scanner->current);
 }
 
 // return the character after next
-static char peekNext(Scanner *scanner) {
-    if (isAtEnd(scanner)) {
+static char peek_next(Scanner *scanner) {
+    if (is_at_end(scanner)) {
         return '\0';
     }
     return scanner->current[1];
 }
 
 // advance past whitespace in the scanner stream.
-static void skipWhitespace(Scanner *scanner) {
+static void skip_whitespace(Scanner *scanner) {
     for (;;) {
         char c = peek(scanner);
         switch (c) {
@@ -78,7 +78,7 @@ static void skipWhitespace(Scanner *scanner) {
 }
 
 static Token string(Scanner *scanner) {
-    while(peek(scanner) != '"' && !isAtEnd(scanner)) {
+    while(peek(scanner) != '"' && !is_at_end(scanner)) {
         // if the next character is a backslash,
         // skip it
         if (peek(scanner) == '\\') {
@@ -87,18 +87,18 @@ static Token string(Scanner *scanner) {
         // advance past the normal or escaped char
         advance(scanner);
     }
-    if (isAtEnd(scanner)) {
-        return errorToken("unterminated string");
+    if (is_at_end(scanner)) {
+        return error_token("unterminated string");
     }
     advance(scanner);
-    return makeToken(scanner, TOKEN_STRING);
+    return make_token(scanner, TOKEN_STRING);
 }
 
-static bool isDigit(const char c) {
+static bool is_digit(const char c) {
     return '0' <= c && c <= '9';
 }
 
-static bool isAlpha(const char c) {
+static bool is_alpha(const char c) {
     return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || ('_' == c);
 }
 
@@ -107,23 +107,23 @@ static bool isAlpha(const char c) {
 // TODO: stricting parsing according to JSON specification,
 // ie, no leading zeroes for integers, support scientific notation.
 static Token number(Scanner *scanner) {
-    while (isDigit(peek(scanner))) {
+    while (is_digit(peek(scanner))) {
         advance(scanner);
     }
     // look for fractional parts:
-    if (peek(scanner) == '.' && isDigit(peekNext(scanner))) {
+    if (peek(scanner) == '.' && is_digit(peek_next(scanner))) {
         advance(scanner);
-        while (isDigit(peek(scanner))) {
+        while (is_digit(peek(scanner))) {
             advance(scanner);
         }
     }
-    return makeToken(scanner, TOKEN_NUMBER);
+    return make_token(scanner, TOKEN_NUMBER);
 }
 
 // checkKeyword validates that the next several characters of
 // string input match those expected for a given keyword. If they
 // do, returns the token type that represents the keyword.
-static TokenType checkKeyword(Scanner *scanner, const int start, const int length, const char *rest, const TokenType tokenType) {
+static TokenType check_keyword(Scanner *scanner, const int start, const int length, const char *rest, const TokenType tokenType) {
     if ((scanner->current - scanner->start == start + length) && (memcmp(scanner->start + start, rest, length) == 0)) {
         return tokenType;
     }
@@ -131,51 +131,51 @@ static TokenType checkKeyword(Scanner *scanner, const int start, const int lengt
 }
 
 static TokenType keyword(Scanner *scanner) {
-    while (isAlpha(peek(scanner))) {
+    while (is_alpha(peek(scanner))) {
         advance(scanner);
     }
     switch(scanner->start[0]) {
         case 't':
-            return checkKeyword(scanner, 1, 3, "rue", TOKEN_TRUE);
+            return check_keyword(scanner, 1, 3, "rue", TOKEN_TRUE);
         case 'f':
-            return checkKeyword(scanner, 1, 4, "alse", TOKEN_FALSE);
+            return check_keyword(scanner, 1, 4, "alse", TOKEN_FALSE);
         case 'n':
-            return checkKeyword(scanner, 1, 3, "ull", TOKEN_NULL);
+            return check_keyword(scanner, 1, 3, "ull", TOKEN_NULL);
         default:
             return TOKEN_ERROR;
     }
 }
- 
-Token scanToken(Scanner *scanner) {
-    skipWhitespace(scanner);
+
+Token scan_token(Scanner *scanner) {
+    skip_whitespace(scanner);
     scanner->start = scanner->current;
-    if(isAtEnd(scanner)) return makeToken(scanner, TOKEN_EOF);
+    if(is_at_end(scanner)) return make_token(scanner, TOKEN_EOF);
 
     char c = advance(scanner);
-    if (isAlpha(c)) {
+    if (is_alpha(c)) {
         TokenType tokenType = keyword(scanner);
         if (TOKEN_ERROR == tokenType) {
-            return errorToken("invalid keyword");
+            return error_token("invalid keyword");
         }
-        return makeToken(scanner, tokenType);
+        return make_token(scanner, tokenType);
     }
-    if (isDigit(c)) {
+    if (is_digit(c)) {
         return number(scanner);
     }
     switch (c) {
-        case '[': return makeToken(scanner, TOKEN_LEFTBRACKET);
-        case ']': return makeToken(scanner, TOKEN_RIGHTBRACKET);
-        case '{': return makeToken(scanner, TOKEN_LEFTBRACE);
-        case '}': return makeToken(scanner, TOKEN_RIGHTBRACE);
-        case ',': return makeToken(scanner, TOKEN_COMMA);
-        case ':': return makeToken(scanner, TOKEN_COLON);
+        case '[': return make_token(scanner, TOKEN_LEFTBRACKET);
+        case ']': return make_token(scanner, TOKEN_RIGHTBRACKET);
+        case '{': return make_token(scanner, TOKEN_LEFTBRACE);
+        case '}': return make_token(scanner, TOKEN_RIGHTBRACE);
+        case ',': return make_token(scanner, TOKEN_COMMA);
+        case ':': return make_token(scanner, TOKEN_COLON);
         case '"': return string(scanner);
         case '-':
-            if (isDigit(peek(scanner))) {
+            if (is_digit(peek(scanner))) {
                 return number(scanner);
             }
-            return errorToken("expected digit after '-'");
+            return error_token("expected digit after '-'");
     }
-    
-    return errorToken("unexpected character");
+
+    return error_token("unexpected character");
 }
