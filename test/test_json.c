@@ -26,7 +26,7 @@ void test_lexer_invalid_keyword(void) {
     assert_token(&s, TOKEN_ERROR, "invalid keyword");
 }
 
-void test_lexer_null_keyword(void) {
+void test_lexer_keyword_null(void) {
     Scanner s;
     initScanner(&s, "null");
     Token t = scanToken(&s);
@@ -79,7 +79,8 @@ void test_lexer_negative_float(void) {
 void test_lexer_invalid_decimals(void) {
     Scanner s;
     initScanner(&s, "13.37.5");
-    assert_token(&s, TOKEN_ERROR, NULL);
+    assert_token(&s, TOKEN_NUMBER, "13.37");
+    assert_token(&s, TOKEN_ERROR, "unexpected character");
 }
 
 void test_lexer_escaped_quote(void) {
@@ -100,6 +101,82 @@ void test_lexer_unterminated_string(void) {
     assert_token(&s, TOKEN_ERROR, "unterminated string");
 }
 
+void test_lexer_keyword_true(void) {
+    Scanner s;
+    initScanner(&s, "true");
+    assert_token(&s, TOKEN_TRUE, "true");
+    assert_token(&s, TOKEN_EOF, "");
+}
+
+void test_lexer_keyword_false(void) {
+    Scanner s;
+    initScanner(&s, "false");
+    assert_token(&s, TOKEN_FALSE, "false");
+    assert_token(&s, TOKEN_EOF, "");
+}
+
+void test_lexer_symbol_leftbrace(void) {
+    Scanner s;
+    initScanner(&s, "{");
+    assert_token(&s, TOKEN_LEFTBRACE, "{");
+    assert_token(&s, TOKEN_EOF, "");
+}
+
+void test_lexer_symbol_rightbrace(void) {
+    Scanner s;
+    initScanner(&s, "}");
+    assert_token(&s, TOKEN_RIGHTBRACE, "}");
+    assert_token(&s, TOKEN_EOF, "");
+}
+
+void test_lexer_symbol_leftbracket(void) {
+    Scanner s;
+    initScanner(&s, "[");
+    assert_token(&s, TOKEN_LEFTBRACKET, "[");
+    assert_token(&s, TOKEN_EOF, "");
+}
+
+void test_lexer_symbol_rightbracket(void) {
+    Scanner s;
+    initScanner(&s, "]");
+    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
+    assert_token(&s, TOKEN_EOF, "");
+}
+
+void test_lexer_symbol_colon(void) {
+    Scanner s;
+    initScanner(&s, ":");
+    assert_token(&s, TOKEN_COLON, ":");
+    assert_token(&s, TOKEN_EOF, "");
+}
+
+void test_lexer_symbol_comma(void) {
+    Scanner s;
+    initScanner(&s, ",");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_EOF, "");
+}
+
+void test_lexer_keyword_case_sensitive(void) {
+    Scanner s;
+    initScanner(&s, "True");
+    assert_token(&s, TOKEN_ERROR, "invalid keyword");
+}
+
+// many future test cases:
+// TODO: keyword parsing is case-sensitive
+// TODO: incomplete keywords eg 'tru'.
+// TODO: whitespace produces TOKEN_EOF
+// TODO: whitespace in quotes produces TOKEN_STRING
+// TODO: valid tokens without whitespace produce tokens
+// TODO: very long input
+// TODO: complex JSON
+// TODO: invalid/unexpected characters
+// TODO: invalid escapes?
+// TODO: negative sign at end of input?
+// TODO: empty json object {}
+//
+
 
 void test_lexer_minimal_json(void) {
     Scanner s;
@@ -116,7 +193,9 @@ void test_lexer_minimal_json(void) {
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_empty_input);
-    RUN_TEST(test_lexer_null_keyword);
+    RUN_TEST(test_lexer_keyword_null);
+    RUN_TEST(test_lexer_keyword_true);
+    RUN_TEST(test_lexer_keyword_false);
     RUN_TEST(test_lexer_invalid_keyword);
     RUN_TEST(test_lexer_eof);
     RUN_TEST(test_lexer_zero);
@@ -129,6 +208,11 @@ int main(void) {
     RUN_TEST(test_lexer_escaped_backslash);
     RUN_TEST(test_lexer_unterminated_string);
     RUN_TEST(test_lexer_minimal_json);
+    RUN_TEST(test_lexer_keyword_case_sensitive);
+    RUN_TEST(test_lexer_symbol_leftbracket);
+    RUN_TEST(test_lexer_symbol_rightbracket);
+    RUN_TEST(test_lexer_symbol_colon);
+    RUN_TEST(test_lexer_symbol_comma);
     UNITY_END();
     return 0;
 }

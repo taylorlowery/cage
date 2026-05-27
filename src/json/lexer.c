@@ -177,5 +177,5 @@ Token scanToken(Scanner *scanner) {
             return errorToken("expected digit after '-'");
     }
     
-    return errorToken("Unexpected character");
+    return errorToken("unexpected character");
 }
