@@ -170,7 +170,6 @@ void test_lexer_keyword_case_sensitive(void) {
 // TODO: whitespace in quotes produces TOKEN_STRING
 // TODO: valid tokens without whitespace produce tokens
 // TODO: very long input
-// TODO: complex JSON
 // TODO: invalid/unexpected characters
 // TODO: invalid escapes?
 // TODO: negative sign at end of input?
@@ -189,6 +188,86 @@ void test_lexer_minimal_json(void) {
     assert_token(&s, TOKEN_EOF, NULL);
 }
 
+
+void test_lexer_json_list(void) {
+    Scanner s;
+    initScanner(&s, "[1, 2, 3]");
+    assert_token(&s, TOKEN_LEFTBRACKET, "[");
+    assert_token(&s, TOKEN_NUMBER, "1");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_NUMBER, "2");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_NUMBER, "3");
+    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
+    assert_token(&s, TOKEN_EOF, NULL);
+}
+
+void test_lexer_json_object_with_list(void) {
+    Scanner s;
+    initScanner(&s, "{\"items\": [1, 2]}");
+    assert_token(&s, TOKEN_LEFTBRACE, "{");
+    assert_token(&s, TOKEN_STRING, "\"items\"");
+    assert_token(&s, TOKEN_COLON, ":");
+    assert_token(&s, TOKEN_LEFTBRACKET, "[");
+    assert_token(&s, TOKEN_NUMBER, "1");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_NUMBER, "2");
+    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
+    assert_token(&s, TOKEN_RIGHTBRACE, "}");
+    assert_token(&s, TOKEN_EOF, NULL);
+}
+
+void test_lexer_complex_json(void) {
+    Scanner s;
+    initScanner(&s, "{\"name\": \"test\", \"values\": [1, 2.5, -3], \"flags\": {\"a\": true, \"b\": null}}");
+    assert_token(&s, TOKEN_LEFTBRACE, "{");
+    assert_token(&s, TOKEN_STRING, "\"name\"");
+    assert_token(&s, TOKEN_COLON, ":");
+    assert_token(&s, TOKEN_STRING, "\"test\"");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_STRING, "\"values\"");
+    assert_token(&s, TOKEN_COLON, ":");
+    assert_token(&s, TOKEN_LEFTBRACKET, "[");
+    assert_token(&s, TOKEN_NUMBER, "1");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_NUMBER, "2.5");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_NUMBER, "-3");
+    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_STRING, "\"flags\"");
+    assert_token(&s, TOKEN_COLON, ":");
+    assert_token(&s, TOKEN_LEFTBRACE, "{");
+    assert_token(&s, TOKEN_STRING, "\"a\"");
+    assert_token(&s, TOKEN_COLON, ":");
+    assert_token(&s, TOKEN_TRUE, "true");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_STRING, "\"b\"");
+    assert_token(&s, TOKEN_COLON, ":");
+    assert_token(&s, TOKEN_NULL, "null");
+    assert_token(&s, TOKEN_RIGHTBRACE, "}");
+    assert_token(&s, TOKEN_RIGHTBRACE, "}");
+    assert_token(&s, TOKEN_EOF, NULL);
+}
+
+void test_lexer_list_of_objects(void) {
+    Scanner s;
+    initScanner(&s, "[{\"a\": 1}, {\"b\": 2}]");
+    assert_token(&s, TOKEN_LEFTBRACKET, "[");
+    assert_token(&s, TOKEN_LEFTBRACE, "{");
+    assert_token(&s, TOKEN_STRING, "\"a\"");
+    assert_token(&s, TOKEN_COLON, ":");
+    assert_token(&s, TOKEN_NUMBER, "1");
+    assert_token(&s, TOKEN_RIGHTBRACE, "}");
+    assert_token(&s, TOKEN_COMMA, ",");
+    assert_token(&s, TOKEN_LEFTBRACE, "{");
+    assert_token(&s, TOKEN_STRING, "\"b\"");
+    assert_token(&s, TOKEN_COLON, ":");
+    assert_token(&s, TOKEN_NUMBER, "2");
+    assert_token(&s, TOKEN_RIGHTBRACE, "}");
+    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
+    assert_token(&s, TOKEN_EOF, NULL);
+}
 
 int main(void) {
     UNITY_BEGIN();
@@ -213,6 +292,10 @@ int main(void) {
     RUN_TEST(test_lexer_symbol_rightbracket);
     RUN_TEST(test_lexer_symbol_colon);
     RUN_TEST(test_lexer_symbol_comma);
+    RUN_TEST(test_lexer_json_list);
+    RUN_TEST(test_lexer_json_object_with_list);
+    RUN_TEST(test_lexer_complex_json);
+    RUN_TEST(test_lexer_list_of_objects);
     UNITY_END();
     return 0;
 }
