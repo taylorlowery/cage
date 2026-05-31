@@ -13,7 +13,7 @@ void tearDown(void) {
 }
 
 void assert_token(Scanner *scanner, TokenType expected_tokentype, char *expected_value) {
-    Token t = scanToken(scanner);
+    Token t = scan_token(scanner);
     TEST_ASSERT_EQUAL(expected_tokentype, t.type);
     if (NULL != expected_value) {
         TEST_ASSERT_EQUAL_STRING_LEN(expected_value, t.start, t.length);
@@ -22,144 +22,144 @@ void assert_token(Scanner *scanner, TokenType expected_tokentype, char *expected
 
 void test_lexer_invalid_keyword(void) {
     Scanner s;
-    initScanner(&s, "invalid_keyword");
+    init_scanner(&s, "invalid_keyword");
     assert_token(&s, TOKEN_ERROR, "invalid keyword");
 }
 
 void test_lexer_keyword_null(void) {
     Scanner s;
-    initScanner(&s, "null");
-    Token t = scanToken(&s);
+    init_scanner(&s, "null");
+    Token t = scan_token(&s);
     TEST_ASSERT_EQUAL(TOKEN_NULL, t.type);
 }
 
 void test_lexer_eof(void) {
     Scanner s;
-    initScanner(&s, "null");
+    init_scanner(&s, "null");
     assert_token(&s, TOKEN_NULL, "null");
     assert_token(&s, TOKEN_EOF, NULL);
 }
 
 void test_lexer_empty_input(void) {
     Scanner s;
-    initScanner(&s, "");
+    init_scanner(&s, "");
     assert_token(&s, TOKEN_EOF, NULL);
 }
 
 void test_lexer_zero(void) {
     Scanner s;
-    initScanner(&s, "0");
+    init_scanner(&s, "0");
     assert_token(&s, TOKEN_NUMBER, "0");
 }
 
 void test_lexer_positive_int(void) {
     Scanner s;
-    initScanner(&s, "1337");
+    init_scanner(&s, "1337");
     assert_token(&s, TOKEN_NUMBER, "1337");
 }
 
 void test_lexer_negative_int(void) {
     Scanner s;
-    initScanner(&s, "-1337");
+    init_scanner(&s, "-1337");
     assert_token(&s, TOKEN_NUMBER, "-1337");
 }
 
 void test_lexer_float(void) {
     Scanner s;
-    initScanner(&s, "13.37");
+    init_scanner(&s, "13.37");
     assert_token(&s, TOKEN_NUMBER, "13.37");
 }
 
 void test_lexer_negative_float(void) {
     Scanner s;
-    initScanner(&s, "-13.37");
+    init_scanner(&s, "-13.37");
     assert_token(&s, TOKEN_NUMBER, "-13.37");
 }
 
 void test_lexer_invalid_decimals(void) {
     Scanner s;
-    initScanner(&s, "13.37.5");
+    init_scanner(&s, "13.37.5");
     assert_token(&s, TOKEN_NUMBER, "13.37");
     assert_token(&s, TOKEN_ERROR, "unexpected character");
 }
 
 void test_lexer_escaped_quote(void) {
     Scanner s;
-    initScanner(&s, "\"Howdy, \"Pilgrim!\"");
+    init_scanner(&s, "\"Howdy, \"Pilgrim!\"");
     assert_token(&s, TOKEN_STRING, "\"Howdy, \"Pilgrim!\"");
 }
 
 void test_lexer_escaped_backslash(void) {
     Scanner s;
-    initScanner(&s, "\"Howdy, \\Pilgrim!\"");
+    init_scanner(&s, "\"Howdy, \\Pilgrim!\"");
     assert_token(&s, TOKEN_STRING, "\"Howdy, \\Pilgrim!\"");
 }
 
 void test_lexer_unterminated_string(void) {
     Scanner s;
-    initScanner(&s, "\"howdy");
+    init_scanner(&s, "\"howdy");
     assert_token(&s, TOKEN_ERROR, "unterminated string");
 }
 
 void test_lexer_keyword_true(void) {
     Scanner s;
-    initScanner(&s, "true");
+    init_scanner(&s, "true");
     assert_token(&s, TOKEN_TRUE, "true");
     assert_token(&s, TOKEN_EOF, "");
 }
 
 void test_lexer_keyword_false(void) {
     Scanner s;
-    initScanner(&s, "false");
+    init_scanner(&s, "false");
     assert_token(&s, TOKEN_FALSE, "false");
     assert_token(&s, TOKEN_EOF, "");
 }
 
 void test_lexer_symbol_leftbrace(void) {
     Scanner s;
-    initScanner(&s, "{");
+    init_scanner(&s, "{");
     assert_token(&s, TOKEN_LEFTBRACE, "{");
     assert_token(&s, TOKEN_EOF, "");
 }
 
 void test_lexer_symbol_rightbrace(void) {
     Scanner s;
-    initScanner(&s, "}");
+    init_scanner(&s, "}");
     assert_token(&s, TOKEN_RIGHTBRACE, "}");
     assert_token(&s, TOKEN_EOF, "");
 }
 
 void test_lexer_symbol_leftbracket(void) {
     Scanner s;
-    initScanner(&s, "[");
+    init_scanner(&s, "[");
     assert_token(&s, TOKEN_LEFTBRACKET, "[");
     assert_token(&s, TOKEN_EOF, "");
 }
 
 void test_lexer_symbol_rightbracket(void) {
     Scanner s;
-    initScanner(&s, "]");
+    init_scanner(&s, "]");
     assert_token(&s, TOKEN_RIGHTBRACKET, "]");
     assert_token(&s, TOKEN_EOF, "");
 }
 
 void test_lexer_symbol_colon(void) {
     Scanner s;
-    initScanner(&s, ":");
+    init_scanner(&s, ":");
     assert_token(&s, TOKEN_COLON, ":");
     assert_token(&s, TOKEN_EOF, "");
 }
 
 void test_lexer_symbol_comma(void) {
     Scanner s;
-    initScanner(&s, ",");
+    init_scanner(&s, ",");
     assert_token(&s, TOKEN_COMMA, ",");
     assert_token(&s, TOKEN_EOF, "");
 }
 
 void test_lexer_keyword_case_sensitive(void) {
     Scanner s;
-    initScanner(&s, "True");
+    init_scanner(&s, "True");
     assert_token(&s, TOKEN_ERROR, "invalid keyword");
 }
 
@@ -179,7 +179,7 @@ void test_lexer_keyword_case_sensitive(void) {
 
 void test_lexer_minimal_json(void) {
     Scanner s;
-    initScanner(&s, "{\"key\": \"value\"}");
+    init_scanner(&s, "{\"key\": \"value\"}");
     assert_token(&s, TOKEN_LEFTBRACE, "{");
     assert_token(&s, TOKEN_STRING, "\"key\"");
     assert_token(&s, TOKEN_COLON, ":");
@@ -191,7 +191,7 @@ void test_lexer_minimal_json(void) {
 
 void test_lexer_json_list(void) {
     Scanner s;
-    initScanner(&s, "[1, 2, 3]");
+    init_scanner(&s, "[1, 2, 3]");
     assert_token(&s, TOKEN_LEFTBRACKET, "[");
     assert_token(&s, TOKEN_NUMBER, "1");
     assert_token(&s, TOKEN_COMMA, ",");
@@ -204,7 +204,7 @@ void test_lexer_json_list(void) {
 
 void test_lexer_json_object_with_list(void) {
     Scanner s;
-    initScanner(&s, "{\"items\": [1, 2]}");
+    init_scanner(&s, "{\"items\": [1, 2]}");
     assert_token(&s, TOKEN_LEFTBRACE, "{");
     assert_token(&s, TOKEN_STRING, "\"items\"");
     assert_token(&s, TOKEN_COLON, ":");
@@ -219,7 +219,7 @@ void test_lexer_json_object_with_list(void) {
 
 void test_lexer_complex_json(void) {
     Scanner s;
-    initScanner(&s, "{\"name\": \"test\", \"values\": [1, 2.5, -3], \"flags\": {\"a\": true, \"b\": null}}");
+    init_scanner(&s, "{\"name\": \"test\", \"values\": [1, 2.5, -3], \"flags\": {\"a\": true, \"b\": null}}");
     assert_token(&s, TOKEN_LEFTBRACE, "{");
     assert_token(&s, TOKEN_STRING, "\"name\"");
     assert_token(&s, TOKEN_COLON, ":");
@@ -252,7 +252,7 @@ void test_lexer_complex_json(void) {
 
 void test_lexer_list_of_objects(void) {
     Scanner s;
-    initScanner(&s, "[{\"a\": 1}, {\"b\": 2}]");
+    init_scanner(&s, "[{\"a\": 1}, {\"b\": 2}]");
     assert_token(&s, TOKEN_LEFTBRACKET, "[");
     assert_token(&s, TOKEN_LEFTBRACE, "{");
     assert_token(&s, TOKEN_STRING, "\"a\"");

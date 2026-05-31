@@ -5,10 +5,15 @@
 #ifndef JSON_H
 #define JSON_H
 
+#include <stdbool.h>
+#include <stdlib.h>
+#include <stdio.h>
+
 typedef struct {
     const char* start;
     const char* current;
 } Scanner;
+
 
 typedef enum {
     TOKEN_LEFTBRACE, TOKEN_RIGHTBRACE,
@@ -30,7 +35,60 @@ typedef struct {
     int length;
 } Token;
 
-void initScanner(Scanner *scanner, const char *source);
-Token scanToken(Scanner *scanner);
+typedef struct {
+  Token current;
+  Token previous;
+  bool had_error;
+  bool panic_mode;
+  FILE *error_stream;
+  Scanner scanner;
+} Parser;
+
+typedef enum {
+    JSON_NULL,
+    JSON_BOOL,
+    JSON_NUMBER,
+    JSON_STRING,
+    JSON_ARRAY,
+    JSON_OBJECT,
+} JsonType;
+
+
+typedef struct JsonValue JsonValue;
+
+typedef struct {
+    JsonValue *items;
+    size_t count;
+    size_t capacity;
+} JsonArray;
+
+typedef struct {
+    char* key;
+    JsonValue *value;
+} JsonPair;
+
+typedef struct {
+    JsonPair *pairs;
+    size_t count;
+    size_t capacity;
+} JsonObject;
+
+typedef struct JsonValue{
+    JsonType type;
+    union {
+        bool boolean;
+        double number;
+        char *string;
+        JsonArray *array;
+        JsonObject *object;
+    } as;
+} JsonValue;
+
+void init_scanner(Scanner *scanner, const char *source);
+Token scan_token(Scanner *scanner);
+void init_parser(Parser *parser, const char *source, FILE *error_stream);
+bool parse(Parser *parser);
+void free_json_value(JsonValue *value);
+
 
 #endif // JSON_H
