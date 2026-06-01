@@ -175,21 +175,27 @@ static JsonPair *json_pair(Parser *parser) {
 
 static void json_object(Parser *parser, JsonValue *value) {
   consume(parser, TOKEN_LEFTBRACE, "expected left brace '{'");
+  if (parser->had_error) {
+    return;
+  }
   value->type = JSON_OBJECT;
+  // allocate space for json object (capactity will be 0)
   value->as.object = calloc(1, sizeof(JsonObject));
   if (NULL == value->as.object) {
     error_at_current(parser, "unable to allocate new json object");
-    return;
-  }
-  realloc_json_object(parser, value->as.object);
-  if (parser->had_error) {
-    // something?
     return;
   }
 
   // check and return early on empty object
   if (check(parser, TOKEN_RIGHTBRACE)) {
     consume(parser, TOKEN_RIGHTBRACE, "expected right brace '}'");
+    return;
+  }
+
+  // not empty, 
+  // realloc the object to have a greater capacity
+  realloc_json_object(parser, value->as.object);
+  if (parser->had_error) {
     return;
   }
 
@@ -229,7 +235,53 @@ static void json_object(Parser *parser, JsonValue *value) {
   return;
 }
 
-static void json_array(Parser *parser, JsonValue *value) {}
+static void json_array(Parser *parser, JsonValue *value) {
+  consume(parser, TOKEN_LEFTBRACKET, "expected array to begin with left bracket '['");
+  if (parser->had_error) {
+    return;
+  }
+  value->type = JSON_ARRAY;
+  // allocate space for the array items (capacity is 0)
+  value->as.array->items = calloc(1, sizeof(JsonArray));
+  if (NULL == value->as.array) {
+    error_at_current(parser, "unable to allocate json array");
+    return;
+  }
+
+  // check for empty array
+  if (check(parser, TOKEN_RIGHTBRACKET)) {
+    consume(parser, TOKEN_RIGHTBRACKET, "expected end of array '[]'");
+    return;
+  }
+
+
+  // not empty, so reallocate for more space
+  realloc_json_array(parser, value->as.array);
+  if (parser->had_error) {
+    // rats
+    return;
+  }
+  
+  // get first value
+  JsonValue *first_array_value = json_value(parser);
+  value->as.array->items[value->as.array->count] = *first_array_value;
+  value->as.array->count += 1;
+
+  while (match(parser, TOKEN_COMMA)) {
+    JsonValue *first_array_value = json_value(parser);
+    value->as.array->items[value->as.array->count] = *first_array_value;
+    value->as.array->count += 1;
+    if (value->as.array->count == value->as.array->capacity) {
+      realloc_json_array(parser, value->as.array);
+      if (parser->had_error) {
+        return;
+      }
+    }
+  }
+
+  consume(parser, TOKEN_RIGHTBRACE, "expected end of object");
+  return;
+}
 
 
 static JsonValue *json_value(Parser *parser) {
