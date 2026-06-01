@@ -87,7 +87,7 @@ typedef struct JsonValue{
 void init_scanner(Scanner *scanner, const char *source);
 Token scan_token(Scanner *scanner);
 void init_parser(Parser *parser, const char *source, FILE *error_stream);
-bool parse(Parser *parser);
+JsonValue *parse_json(Parser *parser);
 void free_json_value(JsonValue *value);
 
 

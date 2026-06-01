@@ -53,8 +53,6 @@ static void error_at_current(Parser *parser, const char *message) {
   error_at(parser, &parser->current, message);
 }
 
-// WIP
-// TODO: address spin on error
 static void advance(Parser *parser) {
   parser->previous = parser->current;
   parser->current = scan_token(&parser->scanner);
@@ -221,14 +219,12 @@ static void json_object(Parser *parser, JsonValue *value) {
     value->as.object->count += 1;
     if (value->as.object->count == value->as.object->capacity) {
       realloc_json_object(parser, value->as.object);
+      if (parser->had_error) {
+        return;
+      }
     }
   }
 
-  // error if not end of object
-  if (!check(parser, TOKEN_RIGHTBRACE)) {
-    // error?
-    // free everything so far?
-  }
   consume(parser, TOKEN_RIGHTBRACE, "expected end of object");
   return;
 }
@@ -287,10 +283,19 @@ static JsonValue *json_value(Parser *parser) {
 
 // parse() accepts an initialized parser and scanner
 // and parses the JSON.
-bool parse(Parser *parser) {
+JsonValue *parse_json(Parser *parser) {
+  // move initial token into current
   advance(parser);
-  json_value(parser);
+  // recursively iterate through parser
+  JsonValue *value = json_value(parser);
+  // if there was an error parsing,
+  // free the json value we parsed and return null
+  if (parser->had_error) {
+    free_json_value(value);
+    return NULL;
+  }
+  // validate the end of the file and return what we parsed successfully
   consume(parser, TOKEN_EOF, "expect end of input");
-  return !(parser->had_error);
+  return value;
 }
 
