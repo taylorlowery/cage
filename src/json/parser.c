@@ -144,8 +144,46 @@ static void realloc_json_object(Parser *parser, JsonObject *json_object) {
   json_object->capacity = new_capacity;
 }
 
+// iterate through json value and free all pointers
 void free_json_value(JsonValue *value) {
-  
+  if (NULL == value) {
+    return;
+  }
+  switch(value->type) {
+    case JSON_ARRAY:
+      if (NULL == value->as.array) {
+        break;
+      }
+      if (NULL == value->as.array->items) {
+        break;
+      }
+      for (size_t i = 0; i < value->as.array->count; i++) {
+        free_json_value(&(value->as.array->items[i]));
+      }
+      free(value->as.array->items);
+      free(value->as.array);
+      break;
+    case JSON_OBJECT:
+      if (NULL == value->as.object) {
+        break;
+      }
+      if (NULL == value->as.object->pairs) {
+        break;
+      }
+      for (size_t i = 0; i < value->as.object->count; i++) {
+        free_json_value((value->as.object->pairs[i].value));
+        free(value->as.object->pairs[i].key);
+      }
+      free(value->as.object->pairs);
+      free(value->as.object);
+      break;
+    case JSON_STRING:
+      free(value->as.string);
+      break;
+    default:
+      break;
+  }
+  free(value);
 }
 
 // grammar for JSON
@@ -242,7 +280,7 @@ static void json_array(Parser *parser, JsonValue *value) {
   }
   value->type = JSON_ARRAY;
   // allocate space for the array items (capacity is 0)
-  value->as.array->items = calloc(1, sizeof(JsonArray));
+  value->as.array = calloc(1, sizeof(JsonArray));
   if (NULL == value->as.array) {
     error_at_current(parser, "unable to allocate json array");
     return;
@@ -264,12 +302,20 @@ static void json_array(Parser *parser, JsonValue *value) {
   
   // get first value
   JsonValue *first_array_value = json_value(parser);
+  if (NULL == first_array_value) {
+    return;
+  }
   value->as.array->items[value->as.array->count] = *first_array_value;
   value->as.array->count += 1;
+  free(first_array_value);
 
   while (match(parser, TOKEN_COMMA)) {
-    JsonValue *first_array_value = json_value(parser);
-    value->as.array->items[value->as.array->count] = *first_array_value;
+    JsonValue *next_array_value = json_value(parser);
+    if (NULL == next_array_value) {
+      // TODO: should I just continue?
+      return;
+    }
+    value->as.array->items[value->as.array->count] = *next_array_value;
     value->as.array->count += 1;
     if (value->as.array->count == value->as.array->capacity) {
       realloc_json_array(parser, value->as.array);
@@ -277,9 +323,10 @@ static void json_array(Parser *parser, JsonValue *value) {
         return;
       }
     }
+    free(next_array_value);
   }
 
-  consume(parser, TOKEN_RIGHTBRACE, "expected end of object");
+  consume(parser, TOKEN_RIGHTBRACKET, "expected end of array");
   return;
 }
 
@@ -324,6 +371,7 @@ static JsonValue *json_value(Parser *parser) {
       break;
     default:
       error_at_current(parser, "invalid value");
+      free(value);
       return NULL;
   }
   // TODO: address a bug where this double-advances
@@ -340,6 +388,9 @@ JsonValue *parse_json(Parser *parser) {
   advance(parser);
   // recursively iterate through parser
   JsonValue *value = json_value(parser);
+  if (NULL == value) {
+    return NULL;
+  }
   // if there was an error parsing,
   // free the json value we parsed and return null
   if (parser->had_error) {
@@ -348,6 +399,12 @@ JsonValue *parse_json(Parser *parser) {
   }
   // validate the end of the file and return what we parsed successfully
   consume(parser, TOKEN_EOF, "expect end of input");
+  // if there was an error parsing,
+  // free the json value we parsed and return null
+  if (parser->had_error) {
+    free_json_value(value);
+    return NULL;
+  }
   return value;
 }
 
