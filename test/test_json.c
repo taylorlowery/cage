@@ -1,301 +1,76 @@
 #include "json.h"
 #include "vendor/unity/unity.h"
 #include "vendor/unity/unity_internals.h"
-#include <stdio.h>
 
 
-void setUp(void) {
+void setUp(void) {}
 
+void tearDown(void) {}
+
+void test_empty_object(void) {
+    Parser p;
+    init_parser(&p, "{}", stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_OBJECT, v->type, "the returned value was not of the expected type");
+    TEST_ASSERT(v->as.object->capacity == 0);
+    TEST_ASSERT(v->as.object->count == 0);
+    TEST_ASSERT_NULL(v->as.object->pairs);
+    free_json_value(v);
 }
 
-void tearDown(void) {
-
+void test_empty_array(void) {
+    Parser p;
+    init_parser(&p, "[]", stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_ARRAY, v->type, "the returned value was not of the expected type");
+    TEST_ASSERT(0 == v->as.array->count);
+    TEST_ASSERT(0 == v->as.array->capacity);
+    TEST_ASSERT_NULL(v->as.array->items);
+    free_json_value(v);
 }
 
-void assert_token(Scanner *scanner, TokenType expected_tokentype, char *expected_value) {
-    Token t = scan_token(scanner);
-    TEST_ASSERT_EQUAL(expected_tokentype, t.type);
-    if (NULL != expected_value) {
-        TEST_ASSERT_EQUAL_STRING_LEN(expected_value, t.start, t.length);
+void test_truncated_object_returns_null(void) {
+    char err_buf[256] = {0};
+    FILE *err_stream = fmemopen(err_buf, sizeof(err_buf), "w");
+    Parser p;
+    init_parser(&p, "{", err_stream);
+    JsonValue *v = parse_json(&p);
+    fclose(err_stream);
+    TEST_ASSERT_NULL(v);
+    TEST_ASSERT(p.had_error);
+    TEST_ASSERT(err_buf[0] != '\0');
+}
+
+void test_array_with_multiple_empty_objects(void) {
+    Parser p;
+    init_parser(&p, "[{},{},{}]", stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_ARRAY, v->type, "the returned value was not of the expected type");
+    TEST_ASSERT(3 == v->as.array->count);
+    // 8 is the minimum allocated capacity
+    TEST_ASSERT(8 == v->as.array->capacity);
+    TEST_ASSERT_NOT_NULL(v->as.array->items);
+    for (size_t i = 0; i < 3; i++) {
+        JsonValue o = v->as.array->items[i];
+        TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_OBJECT, o.type, "the returned value was not of the expected type");
+        TEST_ASSERT(o.as.object->capacity == 0);
+        TEST_ASSERT(o.as.object->count == 0);
+        TEST_ASSERT_NULL(o.as.object->pairs);
     }
-}
-
-void test_lexer_invalid_keyword(void) {
-    Scanner s;
-    init_scanner(&s, "invalid_keyword");
-    assert_token(&s, TOKEN_ERROR, "invalid keyword");
-}
-
-void test_lexer_keyword_null(void) {
-    Scanner s;
-    init_scanner(&s, "null");
-    Token t = scan_token(&s);
-    TEST_ASSERT_EQUAL(TOKEN_NULL, t.type);
-}
-
-void test_lexer_eof(void) {
-    Scanner s;
-    init_scanner(&s, "null");
-    assert_token(&s, TOKEN_NULL, "null");
-    assert_token(&s, TOKEN_EOF, NULL);
-}
-
-void test_lexer_empty_input(void) {
-    Scanner s;
-    init_scanner(&s, "");
-    assert_token(&s, TOKEN_EOF, NULL);
-}
-
-void test_lexer_zero(void) {
-    Scanner s;
-    init_scanner(&s, "0");
-    assert_token(&s, TOKEN_NUMBER, "0");
-}
-
-void test_lexer_positive_int(void) {
-    Scanner s;
-    init_scanner(&s, "1337");
-    assert_token(&s, TOKEN_NUMBER, "1337");
-}
-
-void test_lexer_negative_int(void) {
-    Scanner s;
-    init_scanner(&s, "-1337");
-    assert_token(&s, TOKEN_NUMBER, "-1337");
-}
-
-void test_lexer_float(void) {
-    Scanner s;
-    init_scanner(&s, "13.37");
-    assert_token(&s, TOKEN_NUMBER, "13.37");
-}
-
-void test_lexer_negative_float(void) {
-    Scanner s;
-    init_scanner(&s, "-13.37");
-    assert_token(&s, TOKEN_NUMBER, "-13.37");
-}
-
-void test_lexer_invalid_decimals(void) {
-    Scanner s;
-    init_scanner(&s, "13.37.5");
-    assert_token(&s, TOKEN_NUMBER, "13.37");
-    assert_token(&s, TOKEN_ERROR, "unexpected character");
-}
-
-void test_lexer_escaped_quote(void) {
-    Scanner s;
-    init_scanner(&s, "\"Howdy, \"Pilgrim!\"");
-    assert_token(&s, TOKEN_STRING, "\"Howdy, \"Pilgrim!\"");
-}
-
-void test_lexer_escaped_backslash(void) {
-    Scanner s;
-    init_scanner(&s, "\"Howdy, \\Pilgrim!\"");
-    assert_token(&s, TOKEN_STRING, "\"Howdy, \\Pilgrim!\"");
-}
-
-void test_lexer_unterminated_string(void) {
-    Scanner s;
-    init_scanner(&s, "\"howdy");
-    assert_token(&s, TOKEN_ERROR, "unterminated string");
-}
-
-void test_lexer_keyword_true(void) {
-    Scanner s;
-    init_scanner(&s, "true");
-    assert_token(&s, TOKEN_TRUE, "true");
-    assert_token(&s, TOKEN_EOF, "");
-}
-
-void test_lexer_keyword_false(void) {
-    Scanner s;
-    init_scanner(&s, "false");
-    assert_token(&s, TOKEN_FALSE, "false");
-    assert_token(&s, TOKEN_EOF, "");
-}
-
-void test_lexer_symbol_leftbrace(void) {
-    Scanner s;
-    init_scanner(&s, "{");
-    assert_token(&s, TOKEN_LEFTBRACE, "{");
-    assert_token(&s, TOKEN_EOF, "");
-}
-
-void test_lexer_symbol_rightbrace(void) {
-    Scanner s;
-    init_scanner(&s, "}");
-    assert_token(&s, TOKEN_RIGHTBRACE, "}");
-    assert_token(&s, TOKEN_EOF, "");
-}
-
-void test_lexer_symbol_leftbracket(void) {
-    Scanner s;
-    init_scanner(&s, "[");
-    assert_token(&s, TOKEN_LEFTBRACKET, "[");
-    assert_token(&s, TOKEN_EOF, "");
-}
-
-void test_lexer_symbol_rightbracket(void) {
-    Scanner s;
-    init_scanner(&s, "]");
-    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
-    assert_token(&s, TOKEN_EOF, "");
-}
-
-void test_lexer_symbol_colon(void) {
-    Scanner s;
-    init_scanner(&s, ":");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_EOF, "");
-}
-
-void test_lexer_symbol_comma(void) {
-    Scanner s;
-    init_scanner(&s, ",");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_EOF, "");
-}
-
-void test_lexer_keyword_case_sensitive(void) {
-    Scanner s;
-    init_scanner(&s, "True");
-    assert_token(&s, TOKEN_ERROR, "invalid keyword");
-}
-
-// many future test cases:
-// TODO: keyword parsing is case-sensitive
-// TODO: incomplete keywords eg 'tru'.
-// TODO: whitespace produces TOKEN_EOF
-// TODO: whitespace in quotes produces TOKEN_STRING
-// TODO: valid tokens without whitespace produce tokens
-// TODO: very long input
-// TODO: invalid/unexpected characters
-// TODO: invalid escapes?
-// TODO: negative sign at end of input?
-// TODO: empty json object {}
-//
-
-
-void test_lexer_minimal_json(void) {
-    Scanner s;
-    init_scanner(&s, "{\"key\": \"value\"}");
-    assert_token(&s, TOKEN_LEFTBRACE, "{");
-    assert_token(&s, TOKEN_STRING, "\"key\"");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_STRING, "\"value\"");
-    assert_token(&s, TOKEN_RIGHTBRACE, "}");
-    assert_token(&s, TOKEN_EOF, NULL);
+    free_json_value(v);
 }
 
 
-void test_lexer_json_list(void) {
-    Scanner s;
-    init_scanner(&s, "[1, 2, 3]");
-    assert_token(&s, TOKEN_LEFTBRACKET, "[");
-    assert_token(&s, TOKEN_NUMBER, "1");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_NUMBER, "2");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_NUMBER, "3");
-    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
-    assert_token(&s, TOKEN_EOF, NULL);
-}
-
-void test_lexer_json_object_with_list(void) {
-    Scanner s;
-    init_scanner(&s, "{\"items\": [1, 2]}");
-    assert_token(&s, TOKEN_LEFTBRACE, "{");
-    assert_token(&s, TOKEN_STRING, "\"items\"");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_LEFTBRACKET, "[");
-    assert_token(&s, TOKEN_NUMBER, "1");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_NUMBER, "2");
-    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
-    assert_token(&s, TOKEN_RIGHTBRACE, "}");
-    assert_token(&s, TOKEN_EOF, NULL);
-}
-
-void test_lexer_complex_json(void) {
-    Scanner s;
-    init_scanner(&s, "{\"name\": \"test\", \"values\": [1, 2.5, -3], \"flags\": {\"a\": true, \"b\": null}}");
-    assert_token(&s, TOKEN_LEFTBRACE, "{");
-    assert_token(&s, TOKEN_STRING, "\"name\"");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_STRING, "\"test\"");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_STRING, "\"values\"");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_LEFTBRACKET, "[");
-    assert_token(&s, TOKEN_NUMBER, "1");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_NUMBER, "2.5");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_NUMBER, "-3");
-    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_STRING, "\"flags\"");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_LEFTBRACE, "{");
-    assert_token(&s, TOKEN_STRING, "\"a\"");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_TRUE, "true");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_STRING, "\"b\"");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_NULL, "null");
-    assert_token(&s, TOKEN_RIGHTBRACE, "}");
-    assert_token(&s, TOKEN_RIGHTBRACE, "}");
-    assert_token(&s, TOKEN_EOF, NULL);
-}
-
-void test_lexer_list_of_objects(void) {
-    Scanner s;
-    init_scanner(&s, "[{\"a\": 1}, {\"b\": 2}]");
-    assert_token(&s, TOKEN_LEFTBRACKET, "[");
-    assert_token(&s, TOKEN_LEFTBRACE, "{");
-    assert_token(&s, TOKEN_STRING, "\"a\"");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_NUMBER, "1");
-    assert_token(&s, TOKEN_RIGHTBRACE, "}");
-    assert_token(&s, TOKEN_COMMA, ",");
-    assert_token(&s, TOKEN_LEFTBRACE, "{");
-    assert_token(&s, TOKEN_STRING, "\"b\"");
-    assert_token(&s, TOKEN_COLON, ":");
-    assert_token(&s, TOKEN_NUMBER, "2");
-    assert_token(&s, TOKEN_RIGHTBRACE, "}");
-    assert_token(&s, TOKEN_RIGHTBRACKET, "]");
-    assert_token(&s, TOKEN_EOF, NULL);
-}
 
 int main(void) {
     UNITY_BEGIN();
-    RUN_TEST(test_lexer_empty_input);
-    RUN_TEST(test_lexer_keyword_null);
-    RUN_TEST(test_lexer_keyword_true);
-    RUN_TEST(test_lexer_keyword_false);
-    RUN_TEST(test_lexer_invalid_keyword);
-    RUN_TEST(test_lexer_eof);
-    RUN_TEST(test_lexer_zero);
-    RUN_TEST(test_lexer_positive_int);
-    RUN_TEST(test_lexer_negative_int);
-    RUN_TEST(test_lexer_float);
-    RUN_TEST(test_lexer_negative_float);
-    RUN_TEST(test_lexer_invalid_decimals);
-    RUN_TEST(test_lexer_escaped_quote);
-    RUN_TEST(test_lexer_escaped_backslash);
-    RUN_TEST(test_lexer_unterminated_string);
-    RUN_TEST(test_lexer_minimal_json);
-    RUN_TEST(test_lexer_keyword_case_sensitive);
-    RUN_TEST(test_lexer_symbol_leftbracket);
-    RUN_TEST(test_lexer_symbol_rightbracket);
-    RUN_TEST(test_lexer_symbol_colon);
-    RUN_TEST(test_lexer_symbol_comma);
-    RUN_TEST(test_lexer_json_list);
-    RUN_TEST(test_lexer_json_object_with_list);
-    RUN_TEST(test_lexer_complex_json);
-    RUN_TEST(test_lexer_list_of_objects);
+    RUN_TEST(test_empty_object);
+    RUN_TEST(test_empty_array);
+    RUN_TEST(test_truncated_object_returns_null);
+    RUN_TEST(test_array_with_multiple_empty_objects);
     UNITY_END();
     return 0;
 }

@@ -31,7 +31,7 @@ static void error_at(Parser *parser, const Token *token, const char *message) {
     return;
   }
   parser->panic_mode = true;
-  fprintf(parser->error_stream, "Error");
+  fprintf(parser->error_stream, "Error ");
 
   switch (token->type) {
     case TOKEN_EOF:
@@ -144,11 +144,7 @@ static void realloc_json_object(Parser *parser, JsonObject *json_object) {
   json_object->capacity = new_capacity;
 }
 
-// iterate through json value and free all pointers
-void free_json_value(JsonValue *value) {
-  if (NULL == value) {
-    return;
-  }
+static void free_json_value_contents(JsonValue *value) {
   switch(value->type) {
     case JSON_ARRAY:
       if (NULL == value->as.array) {
@@ -158,7 +154,7 @@ void free_json_value(JsonValue *value) {
         break;
       }
       for (size_t i = 0; i < value->as.array->count; i++) {
-        free_json_value(&(value->as.array->items[i]));
+        free_json_value_contents(&(value->as.array->items[i]));
       }
       free(value->as.array->items);
       free(value->as.array);
@@ -183,6 +179,14 @@ void free_json_value(JsonValue *value) {
     default:
       break;
   }
+}
+
+// iterate through json value and free all pointers
+void free_json_value(JsonValue *value) {
+  if (NULL == value) {
+    return;
+  }
+  free_json_value_contents(value);
   free(value);
 }
 
