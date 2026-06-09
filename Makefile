@@ -16,10 +16,8 @@ SRC = main.c $(SRC_FILES)
 # TODO: support multiple simultaneous test binaries.
 # Because each Unity test module expects a setUp(), tearDown(), and main(),
 # each needs its own binary, which Unity will run simultaneously.
-# For now, we'll just work on supporting the JSON parser while we develop that.
 # TEST_FILES = $(wildcard test/test_*.c)
-# TEST_SRC = src/agent.c src/http_client.c $(TEST_FILES) test/vendor/unity/unity.c
-TEST_SRC = $(SRC_FILES) test/test_json.c test/vendor/unity/unity.c
+TEST_SRC = $(SRC_FILES) test/test_http_client.c test/vendor/unity/unity.c
 
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)
