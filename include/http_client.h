@@ -6,7 +6,7 @@
 
 typedef enum { HTTP_GET, HTTP_POST } HttpMethod;
 
-char *http_method_to_str(HttpMethod http_method);
+const char *http_method_to_str(HttpMethod http_method);
 
 typedef struct {
     char *key;

@@ -40,7 +40,7 @@ static void free_connection(Connection *conn) {
 // and falls through to http otherwise,
 // returning the number of bytes successfully written to the connection.
 // Returns -1 if the connection's socket fd is -1.
-ssize_t conn_write(const Connection *conn, const char *buf, size_t buf_len) {
+static ssize_t conn_write(const Connection *conn, const char *buf, size_t buf_len) {
     if (NULL != conn->ssl) {
         return SSL_write(conn->ssl, buf, buf_len);
     }
@@ -56,7 +56,7 @@ ssize_t conn_write(const Connection *conn, const char *buf, size_t buf_len) {
 // otherwise falling through to http,
 // returning the number of bytes successfuly read from the connection.
 // Returns -1 if the connection's socket fd is -1.
-ssize_t conn_read(const Connection *conn, char *buf, size_t buf_len) {
+static ssize_t conn_read(const Connection *conn, char *buf, size_t buf_len) {
     if (NULL != conn->ssl) {
         return SSL_read(conn->ssl, buf, buf_len);
     }
@@ -68,7 +68,7 @@ ssize_t conn_read(const Connection *conn, char *buf, size_t buf_len) {
 
 // http_method_to_str receives a HttpMethod enum
 // and returns the appropriate string for use in an HTTP request.
-char *http_method_to_str(HttpMethod http_method) {
+const char *http_method_to_str(HttpMethod http_method) {
     switch (http_method) {
         case HTTP_GET:
             return "GET";
@@ -106,7 +106,7 @@ int get_status_code_from_response_body(const char *http_resp_raw) {
     return (int)status_code;
 }
 
-int build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length, const HttpHeader *extra_headers, const size_t extra_headers_count) {
+static int build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length, const HttpHeader *extra_headers, const size_t extra_headers_count) {
     const char *method_str = http_method_to_str(http_method);
     if (NULL == method_str) {
         return -1;
@@ -147,7 +147,7 @@ int build_headers(char *header_buf, size_t buf_size, const char *path, const Htt
 
 // send_all sends a string buffer to a socket,
 // returning -1 on error and 0 on success.
-ssize_t send_all(const Connection *conn, const char *buf, const size_t buf_len){
+static ssize_t send_all(const Connection *conn, const char *buf, const size_t buf_len){
     size_t remaining_bytes = buf_len;
     ssize_t n = 0;
     ssize_t total_bytes_sent = 0;
@@ -163,7 +163,7 @@ ssize_t send_all(const Connection *conn, const char *buf, const size_t buf_len){
     return total_bytes_sent;
 }
 
-ssize_t recv_all(const Connection *conn, char **recv_buffer, size_t *buf_capacity) {
+static ssize_t recv_all(const Connection *conn, char **recv_buffer, size_t *buf_capacity) {
     ssize_t total_bytes_received = 0;
     ssize_t bytes_received = 0;
     while ((bytes_received = conn_read(conn, *recv_buffer + total_bytes_received, *buf_capacity - total_bytes_received - 1)) > 0) {
@@ -224,7 +224,7 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
 
 // http connect attempts to connect to a socket and returns its socket fd,
 // or returns -1 on error.
-Connection *http_connect(const char *host, const char *port, FILE *output_stream, FILE *error_stream) {
+static Connection *http_connect(const char *host, const char *port, FILE *output_stream, FILE *error_stream) {
     int sockfd = -1;
     struct addrinfo hints;
     struct addrinfo *servinfo = NULL;
@@ -414,7 +414,7 @@ SSL_CTX *create_ssl_ctx(FILE *error_stream) {
 // ssl_connect is a WIP.
 // Currently in placeholder mode while I get other stuff sorted.
 // Caller has to free the connection.
-Connection *ssl_connect(const char* host, const char *port, FILE *output_stream, FILE *error_stream) {
+static Connection *ssl_connect(const char* host, const char *port, FILE *output_stream, FILE *error_stream) {
 
     SSL_CTX *ctx = create_ssl_ctx(error_stream);
     if (NULL == ctx) {
