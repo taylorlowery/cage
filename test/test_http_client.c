@@ -21,6 +21,8 @@ void test_http_client_request_get(void) {
         "80",
         NULL,
         NULL,
+        0,
+        NULL,
         stdout,
         stderr
     );
@@ -40,6 +42,8 @@ void test_https_client_request_get(void) {
         "example.com",
         "443",
         "/",
+        NULL,
+        0,
         NULL,
         stdout,
         stderr
@@ -62,6 +66,8 @@ void test_post_to_invalid_endpoint_returns_error_status(void) {
         "example.com",
         "80",
         "/post",
+        NULL,
+        0,
         body,
         stdout,
         stderr
@@ -70,7 +76,6 @@ void test_post_to_invalid_endpoint_returns_error_status(void) {
     TEST_ASSERT_NOT_NULL(resp);
     if (resp) {
         TEST_ASSERT_EQUAL_INT(405, resp->status_code);
-        fprintf(stdout, "post response body: %s", resp->body);
         free(resp->body);
         free(resp);
     }
@@ -78,12 +83,19 @@ void test_post_to_invalid_endpoint_returns_error_status(void) {
 }
 
 void test_http_client_request_post(void) {
+    HttpHeader headers[] = {
+        { .key = "x-tenant-context", .value = "1337" },
+        { .key = "accept", .value = "application/json" },
+        { .key = "x-api-key", .value = "deadbeef" },
+    };
     char *body = "{\"test\": \"data\"}";
     HTTPResponse *resp = http_request(
         HTTP_POST,
         "httpbin.org",
         "80",
         "/post",
+        headers,
+        3,
         body,
         stdout,
         stderr
@@ -92,19 +104,30 @@ void test_http_client_request_post(void) {
     TEST_ASSERT_NOT_NULL(resp);
     if (resp) {
         TEST_ASSERT_EQUAL_INT(200, resp->status_code);
-        fprintf(stdout, "post response body: %s", resp->body);
+        // TODO: parse the response headers as HttpHeader structs
+        // validate headers present in response body as strings
+        TEST_ASSERT_NOT_NULL_MESSAGE(strcasestr(resp->body, "\"x-api-key\": \"deadbeef\""), "x-api-key header not found in response body");
+        TEST_ASSERT_NOT_NULL_MESSAGE(strcasestr(resp->body, "\"x-tenant-context\": \"1337\""), "x-tenant-context header not found in response body");
+        TEST_ASSERT_NOT_NULL_MESSAGE(strcasestr(resp->body, "\"test\": \"data\""), "test header not found in response body");
         free(resp->body);
         free(resp);
     }
 }
 
 void test_https_client_request_post(void) {
+    HttpHeader headers[] = {
+        { .key = "x-tenant-context", .value = "1337" },
+        { .key = "accept", .value = "application/json" },
+        { .key = "x-api-key", .value = "deadbeef" },
+    };
     char *body = "{\"test\": \"data\"}";
     HTTPResponse *resp = https_request(
         HTTP_POST,
         "httpbin.org",
         "443",
         "/post",
+        headers,
+        3,
         body,
         stdout,
         stderr
@@ -113,7 +136,11 @@ void test_https_client_request_post(void) {
     TEST_ASSERT_NOT_NULL(resp);
     if (resp) {
         TEST_ASSERT_EQUAL_INT(200, resp->status_code);
-        fprintf(stdout, "post response body: %s", resp->body);
+        // TODO: parse the response headers as HttpHeader structs
+        // validate headers present in response body as strings
+        TEST_ASSERT_NOT_NULL_MESSAGE(strcasestr(resp->body, "\"x-api-key\": \"deadbeef\""), "x-api-key header not found in response body");
+        TEST_ASSERT_NOT_NULL_MESSAGE(strcasestr(resp->body, "\"x-tenant-context\": \"1337\""), "x-tenant-context header not found in response body");
+        TEST_ASSERT_NOT_NULL_MESSAGE(strcasestr(resp->body, "\"test\": \"data\""), "test header not found in response body");
         free(resp->body);
         free(resp);
     }

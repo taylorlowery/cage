@@ -14,7 +14,7 @@
 #include <openssl/err.h>
 
 // arbitrary buffer size
-#define DEFAULT_BUFFER_SIZE 4096
+#define DEFAULT_BUFFER_SIZE 8192
 
 // Connection helper struct to assist in abstracting
 // http and https requests.
@@ -106,27 +106,42 @@ int get_status_code_from_response_body(const char *http_resp_raw) {
     return (int)status_code;
 }
 
-int build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length) {
+int build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length, const HttpHeader *extra_headers, const size_t extra_headers_count) {
     const char *method_str = http_method_to_str(http_method);
     if (NULL == method_str) {
         return -1;
     }
     const char *path_str = (NULL == path || strlen(path) == 0) ? "/" : path;
-    snprintf(
+    int cursor = snprintf(
         header_buf,
         buf_size,
         "%s %s HTTP/1.1\r\n"
         "Host: %s\r\n"
         "Content-Type: application/json\r\n"
         "Content-Length: %zu\r\n"
-        "Connection: close\r\n"
-        "\r\n",
+        "Connection: close\r\n",
         method_str,
         path_str,
         host,
         content_length
     );
 
+    if (NULL != extra_headers && 0 < extra_headers_count) {
+        for (size_t i = 0; i < extra_headers_count; i++) {
+            // TODO: check if we need to resize
+
+            // add each header to headers
+            cursor += snprintf(
+                header_buf + cursor,
+                buf_size - cursor,
+                "%s: %s\r\n",
+                extra_headers[i].key,
+                extra_headers[i].value
+            );
+        }
+    }
+
+    snprintf(header_buf + cursor, buf_size - cursor, "\r\n");
     return 0;
 }
 
@@ -290,18 +305,18 @@ Connection *http_connect(const char *host, const char *port, FILE *output_stream
     return conn;
 }
 
-ssize_t http_send(Connection *conn, const HttpMethod http_method, const char *path, const char *host, const char *body, FILE *error_stream) {
+ssize_t http_send(Connection *conn, const HttpMethod http_method, const char *path, const char *host, const HttpHeader *extra_headers, size_t extra_headers_count, const char *body, FILE *error_stream) {
     ssize_t total_bytes_sent = 0;
     size_t body_len = (NULL != body) ? strlen(body) : 0;
-    char headers[DEFAULT_BUFFER_SIZE];
-    int success_code = build_headers(headers, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len);
+    char header_buf[DEFAULT_BUFFER_SIZE];
+    int success_code = build_headers(header_buf, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len, extra_headers, extra_headers_count);
     if (0 != success_code) {
         fprintf(error_stream, "build_headers\n");
         return -1;
     }
 
     // send headers
-    ssize_t header_bytes_sent = send_all(conn, headers, strlen(headers));
+    ssize_t header_bytes_sent = send_all(conn, header_buf, strlen(header_buf));
     if (-1 == header_bytes_sent) {
         fprintf(error_stream, "send headers: %s\n", strerror(errno));
         return -1;
@@ -346,7 +361,7 @@ HTTPResponse *http_receive(Connection *conn, FILE *error_stream) {
 // post() sends a POST request to a given host (eg, "http://example.com"),
 // and returns a pointer to a response object.
 // The caller is responsible for freeing the response.
-HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream){
+HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const HttpHeader *extra_headers, const size_t extra_headers_count, const char* body, FILE *output_stream, FILE *error_stream){
     // connect
     Connection *conn = http_connect(host, port, output_stream, error_stream);
     if (NULL == conn || -1 == conn->sockfd) {
@@ -355,7 +370,7 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     }
 
     // send
-    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, body, error_stream);
+    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, extra_headers, extra_headers_count, body, error_stream);
     if (-1 == total_bytes_sent) {
         free_connection(conn);
         return NULL;
@@ -437,7 +452,7 @@ Connection *ssl_connect(const char* host, const char *port, FILE *output_stream,
     return conn;
 }
 
-HTTPResponse *https_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const char* body, FILE *output_stream, FILE *error_stream) {
+HTTPResponse *https_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const HttpHeader *headers, const size_t header_count, const char* body, FILE *output_stream, FILE *error_stream) {
     // connect
     Connection *conn = ssl_connect(host, port, output_stream, error_stream);
     if (NULL == conn || NULL == conn->ssl) {
@@ -446,7 +461,7 @@ HTTPResponse *https_request(const HttpMethod http_method, const char *host, cons
     }
 
     // send
-    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, body, error_stream);
+    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, headers, header_count, body, error_stream);
     if (-1 == total_bytes_sent) {
         free_connection(conn);
         return NULL;
