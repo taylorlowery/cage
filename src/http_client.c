@@ -106,6 +106,8 @@ int get_status_code_from_response_body(const char *http_resp_raw) {
     return (int)status_code;
 }
 
+// build_headers builds the headers for an HTTP Request.
+// extra-headers should include content-type
 static int build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length, const HttpHeader *extra_headers, const size_t extra_headers_count) {
     const char *method_str = http_method_to_str(http_method);
     if (NULL == method_str) {
@@ -117,14 +119,20 @@ static int build_headers(char *header_buf, size_t buf_size, const char *path, co
         buf_size,
         "%s %s HTTP/1.1\r\n"
         "Host: %s\r\n"
-        "Content-Type: application/json\r\n"
-        "Content-Length: %zu\r\n"
         "Connection: close\r\n",
         method_str,
         path_str,
-        host,
-        content_length
+        host
     );
+
+    if (0 < content_length) {
+        cursor += snprintf(
+            header_buf + cursor,
+            buf_size - cursor,
+            "Content-Length: %zu\r\n",
+            content_length
+        );
+    }
 
     if (NULL != extra_headers && 0 < extra_headers_count) {
         for (size_t i = 0; i < extra_headers_count; i++) {
