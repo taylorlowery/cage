@@ -7,6 +7,7 @@ OUT = cage
 TEST_OUT = test_runner
 
 SRC_FILES = src/agent.c \
+			src/anthropic.c \
 			src/http_client.c \
 			src/json/lexer.c \
 			src/json/parser.c
@@ -17,7 +18,7 @@ SRC = main.c $(SRC_FILES)
 # Because each Unity test module expects a setUp(), tearDown(), and main(),
 # each needs its own binary, which Unity will run simultaneously.
 # TEST_FILES = $(wildcard test/test_*.c)
-TEST_SRC = $(SRC_FILES) test/test_http_client.c test/vendor/unity/unity.c
+TEST_SRC = $(SRC_FILES) test/test_anthropic.c test/vendor/unity/unity.c
 
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)

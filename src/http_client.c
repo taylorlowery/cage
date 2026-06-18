@@ -1,3 +1,6 @@
+/*
+* Yes, I'm aware that libcurl would have made this a lot easier.
+*/
 #include "http_client.h"
 #include <errno.h>
 #include <stddef.h>
