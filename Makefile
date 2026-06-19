@@ -1,3 +1,6 @@
+-include .env
+export
+
 CC = zig cc
 OPENSSL_CFLAGS := $(shell pkg-config --cflags openssl)
 OPENSSL_LDFLAGS := $(shell pkg-config --libs openssl)
