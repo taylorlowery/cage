@@ -212,6 +212,51 @@ void test_anthropic_response(void) {
     free_json_value(v);
 }
 
+void test_string_keys_and_values_have_no_quotes(void) {
+    const char *json = "{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_01Awgi17AdAU3HWie4bCDfQ7\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Howdy!\"}],\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":11,\"output_tokens\":24}}";
+    Parser p;
+    init_parser(&p, json, stderr);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    TEST_ASSERT_EQUAL_INT(JSON_OBJECT, v->type);
+    TEST_ASSERT_EQUAL_INT(9, v->as.object->count);
+
+    TEST_ASSERT_EQUAL_STRING("model", v->as.object->pairs[0].key);
+    TEST_ASSERT_EQUAL_STRING("claude-haiku-4-5-20251001", v->as.object->pairs[0].value->as.string);
+
+    TEST_ASSERT_EQUAL_STRING("id", v->as.object->pairs[1].key);
+    TEST_ASSERT_EQUAL_STRING("msg_01Awgi17AdAU3HWie4bCDfQ7", v->as.object->pairs[1].value->as.string);
+
+    TEST_ASSERT_EQUAL_STRING("type", v->as.object->pairs[2].key);
+    TEST_ASSERT_EQUAL_STRING("message", v->as.object->pairs[2].value->as.string);
+
+    TEST_ASSERT_EQUAL_STRING("role", v->as.object->pairs[3].key);
+    TEST_ASSERT_EQUAL_STRING("assistant", v->as.object->pairs[3].value->as.string);
+
+    TEST_ASSERT_EQUAL_STRING("content", v->as.object->pairs[4].key);
+    TEST_ASSERT_EQUAL_INT(JSON_ARRAY, v->as.object->pairs[4].value->type);
+
+    JsonObject *content_obj = v->as.object->pairs[4].value->as.array->items[0].as.object;
+    TEST_ASSERT_EQUAL_STRING("type", content_obj->pairs[0].key);
+    TEST_ASSERT_EQUAL_STRING("text", content_obj->pairs[0].value->as.string);
+    TEST_ASSERT_EQUAL_STRING("text", content_obj->pairs[1].key);
+    TEST_ASSERT_EQUAL_STRING("Howdy!", content_obj->pairs[1].value->as.string);
+
+    TEST_ASSERT_EQUAL_STRING("stop_reason", v->as.object->pairs[5].key);
+    TEST_ASSERT_EQUAL_STRING("end_turn", v->as.object->pairs[5].value->as.string);
+
+    TEST_ASSERT_EQUAL_STRING("stop_sequence", v->as.object->pairs[6].key);
+    TEST_ASSERT_EQUAL_INT(JSON_NULL, v->as.object->pairs[6].value->type);
+
+    TEST_ASSERT_EQUAL_STRING("stop_details", v->as.object->pairs[7].key);
+    TEST_ASSERT_EQUAL_INT(JSON_NULL, v->as.object->pairs[7].value->type);
+
+    TEST_ASSERT_EQUAL_STRING("usage", v->as.object->pairs[8].key);
+    TEST_ASSERT_EQUAL_INT(JSON_OBJECT, v->as.object->pairs[8].value->type);
+
+    free_json_value(v);
+}
+
 void test_array_with_multiple_empty_objects(void) {
     Parser p;
     init_parser(&p, "[{},{},{}]", stdout);
@@ -256,6 +301,7 @@ int main(void) {
     RUN_TEST(test_extra_data_returns_null);
     RUN_TEST(test_json_like_string);
     RUN_TEST(test_anthropic_response);
+    RUN_TEST(test_string_keys_and_values_have_no_quotes);
     RUN_TEST(test_array_with_multiple_empty_objects);
     UNITY_END();
     return 0;
