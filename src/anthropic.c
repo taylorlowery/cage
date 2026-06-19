@@ -115,12 +115,13 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
             continue;
         }
         if (0 == strcmp(key, "content")) {
-            int message_count = value->as.array->count;
-            if (message_count < 1) {
+            int content_count = value->as.array->count;
+            if (content_count < 1) {
                 continue;
             }
-            resp->content = calloc(message_count, sizeof(AnthropicContent));
-            for (int j = 0; j < message_count; j++) {
+            resp->content = calloc(content_count, sizeof(AnthropicContent));
+            resp->content_count = content_count;
+            for (int j = 0; j < content_count; j++) {
                 JsonObject *msg_json = value->as.array->items[j].as.object;
                 for (size_t k = 0; k < msg_json->count; k++) {
                     JsonPair current_pair = msg_json->pairs[k];

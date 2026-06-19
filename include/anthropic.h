@@ -48,6 +48,7 @@ typedef struct {
     char *type;
     char *role;
     AnthropicContent *content;
+    size_t content_count;
     char *model;
     char *stop_reason;
     char *stop_sequence;
