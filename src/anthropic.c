@@ -90,7 +90,6 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
     for (size_t i = 0; i < json->as.object->count; i++) {
         char *key = json->as.object->pairs[i].key;
         JsonValue *value = json->as.object->pairs[i].value;
-        fprintf(stderr, "DEBUG: processing key '%s'\n", key);
         if (0 == strcmp(key, "id")) {
             resp->id = value->as.string;
             continue;
