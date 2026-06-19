@@ -108,8 +108,18 @@ static char *extract_token_str(Token token, FILE *error_stream) {
       fprintf(error_stream, "unable to allocate buffer");
       return NULL;
     }
-    memcpy(buf, token.start, token.length);
-    buf[token.length] = '\0';
+    const char *start = token.start;
+    int len = token.length;
+    // strip any quotes from start/end.
+    if (*token.start == '"') {
+      start += 1;
+      len -=1;
+    }
+    if (len > 0 && *(token.start + token.length - 1) == '"') {
+      len -= 1;
+    }
+    memcpy(buf, start, len);
+    buf[len] = '\0';
     return buf;
 }
 
