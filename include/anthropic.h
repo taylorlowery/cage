@@ -2,6 +2,7 @@
 
 #define ANTHROPIC_H
 
+#include "json.h"
 #include "http_client.h"
 
 typedef enum AnthropicMessageRole{
@@ -16,11 +17,20 @@ typedef struct {
 } AnthropicMessage;
 
 typedef struct {
+    char *name;
+    char *description;
+    char *input_schema;
+} AnthropicTool;
+
+typedef struct {
     HttpHeader *headers;
     char *model;
     size_t max_tokens;
     AnthropicMessage *messages;
     size_t message_count;
+    char *system;
+    AnthropicTool *tools;
+    size_t tool_count;
 } AnthropicRequest;
 
 typedef struct {
@@ -45,6 +55,7 @@ typedef struct {
 } AnthropicResponse;
 
 size_t serialize_request_body(char *body_buf, size_t buffer_len, AnthropicRequest *request);
+AnthropicResponse *deserialize_response(JsonValue *json);
 
 void Run(void);
 

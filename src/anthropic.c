@@ -1,6 +1,10 @@
 #include "anthropic.h"
+#include "http_client.h"
+#include "json.h"
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <curl/curl.h>
 
 // types below based on the documentation at https://platform.claude.com/docs/en/build-with-claude/working-with-messages
@@ -8,7 +12,7 @@
 #define DEFAULT_MODEL "claude-haiku-4-5"
 #define DEFAULT_MAX_TOKENS 2048
 #define ANTHROPIC_VERSION "2023-06-01"
-#define ANTHROPIC_URL "https://api.anthropic.com"
+#define ANTHROPIC_URL "api.anthropic.com"
 #define ANTHROPIC_MESSAGES_PATH "/v1/messages"
 #define REQUEST_BUFFER_LEN 8192
 
@@ -59,7 +63,7 @@ size_t serialize_request_body(char *body_buf, size_t buffer_len, AnthropicReques
             }
             // TODO: resize buffer if necessary? error if we go over?
         }
-        
+
         cursor += snprintf(
             body_buf + cursor,
             buffer_len - cursor,
@@ -76,7 +80,81 @@ size_t serialize_request_body(char *body_buf, size_t buffer_len, AnthropicReques
     return cursor;
 }
 
+AnthropicResponse *deserialize_response(JsonValue *json) {
+    AnthropicResponse *resp = calloc(1, sizeof(AnthropicResponse));
+    if (NULL == resp) {
+        return NULL;
+    }
+    // since we got here, we assume that the json was successfully
+    // read from the http response and parsed to a json value
+    for (size_t i = 0; i < json->as.object->count; i++) {
+        char *key = json->as.object->pairs[i].key;
+        JsonValue *value = json->as.object->pairs[i].value;
+        fprintf(stderr, "DEBUG: processing key '%s'\n", key);
+        if (0 == strcmp(key, "id")) {
+            resp->id = value->as.string;
+            continue;
+        }
+        if (0 == strcmp(key, "type")) {
+            resp->type = value->as.string;
+            continue;
+        }
+        if (0 == strcmp(key, "role")) {
+            resp->role = value->as.string;
+            continue;
+        }
+        if (0 == strcmp(key, "model")) {
+            resp->model = value->as.string;
+            continue;
+        }
+        if (0 == strcmp(key, "stop_reason")) {
+            resp->stop_reason = value->as.string;
+            continue;
+        }
+        if (0 == strcmp(key, "stop_sequence")) {
+            resp->stop_sequence = value->as.string;
+            continue;
+        }
+        if (0 == strcmp(key, "content")) {
+            int message_count = value->as.array->count;
+            if (message_count < 1) {
+                continue;
+            }
+            resp->content = calloc(message_count, sizeof(AnthropicContent));
+            for (int j = 0; j < message_count; j++) {
+                JsonObject *msg_json = value->as.array->items[j].as.object;
+                for (size_t k = 0; k < msg_json->count; k++) {
+                    JsonPair current_pair = msg_json->pairs[k];
+                    if (0 == strcmp(current_pair.key, "type")) {
+                        resp->content[j].type = current_pair.value->as.string;
+                        continue;
+                    }
+                    if (0 == strcmp(current_pair.key, "text")) {
+                        resp->content[j].text= current_pair.value->as.string;
+                        continue;
+                    }
+                }
+            }
+            continue;
+        }
+        if (0 == strcmp(key, "usage")) {
+            JsonObject *msg_json = value->as.object;
+            for (size_t j = 0; j < msg_json->count; j++) {
+                JsonPair current_pair = msg_json->pairs[j];
+                if (0 == strcmp(current_pair.key, "input_tokens")) {
+                    resp->usage.input_tokens = current_pair.value->as.number;
+                    continue;
+                }
+                if (0 == strcmp(current_pair.key, "output_tokens")) {
+                    resp->usage.output_tokens = current_pair.value->as.number;
+                    continue;
+                }
+            }
+        }
+    }
 
+    return resp;
+}
 
 // Essentially recreating this curl:
 // curl https://api.anthropic.com/v1/messages \
@@ -93,47 +171,68 @@ size_t serialize_request_body(char *body_buf, size_t buffer_len, AnthropicReques
 // }'
 // return the latest response from the API.
 // caller is responsible for freeing it.
-void runInference(char *model, int max_tokens, struct AnthropicMessage *messages, int message_count) {
-//     char data[4096];
-//     // TODO: JSON Serialization rather than building a string.
-//     sprintf(data, "{\n\"model\": \"%s\",\n\"max_tokens\": %d,\n\"messages\": [{\"role\": \"user\": \"Howdy, Pilgrim!\"}],\n}", model, max_tokens);
+void runInference(char *model, int max_tokens, AnthropicMessage *messages, int message_count) {
+    char *anthropic_api_key = getenv("ANTHROPIC_API_KEY");
+    if (NULL == anthropic_api_key) {
+        fprintf(stderr, "Failed to find the API Key from the expected env var %s\n", "ANTHROPIC_API_KEY");
+        return;
+    }
 
-//     CURL *curl;
-//     CURLcode result;
-//     curl = curl_easy_init();
-//     if (NULL == curl) {
-//         fprintf(stderr, "Failed to initialize curl.\n");
-//         return;
-//     }
+    HttpHeader headers[3] = {
+        {
+            .key = "x-api-key",
+            .value = anthropic_api_key,
+        },
+        {
+            .key = "anthropic-version",
+            .value = ANTHROPIC_VERSION,
+        },
+        {
+            .key = "content-type",
+            .value = "application/json"
+        }
+    };
 
-//     // Set the URL to the Anthropic API messages endpoint
-//     curl_easy_setopt(curl, CURLOPT_URL, ANTHROPIC_MESSAGES_URL);
 
-//     // Add the require headers
-//     struct curl_slist *headers = NULL;
-//     // get API key from env
-//     char *anthropic_api_key = getenv("ANTHROPIC_API_KEY");
-//     if (NULL == anthropic_api_key) {
-//         fprintf(stderr, "ANTHROPIC_API_KEY environment variable not set.\n");
-//         return;
-//     }
-//     char headerBuf[1024];
-//     sprintf(headerBuf, "x-api-key: %s", anthropic_api_key);
-//     headers = curl_slist_append(headers, headerBuf);
-//     headers = curl_slist_append(headers, "anthropic-version: 2023-06-01");
-//     headers = curl_slist_append(headers, "content-type: application/json");
-//     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    AnthropicRequest request = {
+        .headers = headers,
+        .model = model,
+        .max_tokens = max_tokens,
+        .messages = messages,
+        .message_count = message_count
+    };
 
-//     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
+    char json_buf[8192];
 
-//     // perform curl
-//     result = curl_easy_perform(curl);
+    serialize_request_body(json_buf, 8192, &request);
 
-//     fprintf(stdout, "%s\n", headers->data);
+    HTTPResponse *http_resp = https_request(HTTP_POST, ANTHROPIC_URL, "443", ANTHROPIC_MESSAGES_PATH, headers, 3, json_buf, stdout, stderr);
+    if (NULL == http_resp) {
+        fprintf(stderr, "Failed to get response from Anthropic API\n");
+        return;
+    }
 
-//     curl_easy_cleanup(curl);
-//     curl_slist_free_all(headers);
+    fprintf(stdout, "The reply says... \"%s\"\n", http_resp->body);
+
+    Parser p;
+    init_parser(&p, http_resp->body, stderr);
+
+    JsonValue *v = parse_json(&p);
+
+    AnthropicResponse *resp = deserialize_response(v);
+    fprintf(stdout, "Claude says: \"%s\"", resp->content[0].text);
 }
 
+
+
 // prepare messages and pass thadem to runInference()
-void Run(void) {}
+void Run(void) {
+    AnthropicMessage messages[1] = {
+        {
+            .role = ROLE_USER,
+            .content = "Howdy!"
+        }
+    };
+
+    runInference(DEFAULT_MODEL, DEFAULT_MAX_TOKENS, messages, 1);
+}
