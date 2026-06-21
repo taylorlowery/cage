@@ -91,30 +91,47 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
         char *key = json->as.object->pairs[i].key;
         JsonValue *value = json->as.object->pairs[i].value;
         if (0 == strcmp(key, "id")) {
-            resp->id = value->as.string;
+            if (value->type == JSON_STRING) {
+                resp->id = value->as.string;
+            }
             continue;
         }
         if (0 == strcmp(key, "type")) {
-            resp->type = value->as.string;
+            if (value->type == JSON_STRING) {
+                resp->type = value->as.string;
+            }
             continue;
         }
         if (0 == strcmp(key, "role")) {
-            resp->role = value->as.string;
+            if (value->type == JSON_STRING) {
+                resp->role = value->as.string;
+            }
             continue;
         }
         if (0 == strcmp(key, "model")) {
-            resp->model = value->as.string;
+            if (value->type == JSON_STRING) {
+                resp->model = value->as.string;
+            }
             continue;
         }
         if (0 == strcmp(key, "stop_reason")) {
-            resp->stop_reason = value->as.string;
+            if (value->type == JSON_STRING) {
+                resp->stop_reason = value->as.string;
+            }
             continue;
         }
         if (0 == strcmp(key, "stop_sequence")) {
-            resp->stop_sequence = value->as.string;
+            if (value->type == JSON_STRING) {
+                resp->stop_sequence = value->as.string;
+            } else if (value->type == JSON_NULL) {
+                resp->stop_sequence = NULL;
+            }
             continue;
         }
         if (0 == strcmp(key, "content")) {
+            if (value->type != JSON_ARRAY) {
+                continue;
+            }
             int content_count = value->as.array->count;
             if (content_count < 1) {
                 continue;
@@ -122,15 +139,23 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
             resp->content = calloc(content_count, sizeof(AnthropicContent));
             resp->content_count = content_count;
             for (int j = 0; j < content_count; j++) {
+                JsonValue item_val = value->as.array->items[j];
+                if (item_val.type != JSON_OBJECT) {
+                    continue;
+                }
                 JsonObject *msg_json = value->as.array->items[j].as.object;
                 for (size_t k = 0; k < msg_json->count; k++) {
                     JsonPair current_pair = msg_json->pairs[k];
                     if (0 == strcmp(current_pair.key, "type")) {
-                        resp->content[j].type = current_pair.value->as.string;
+                        if (current_pair.value->type == JSON_STRING) {
+                            resp->content[j].type = current_pair.value->as.string;
+                        }
                         continue;
                     }
                     if (0 == strcmp(current_pair.key, "text")) {
-                        resp->content[j].text= current_pair.value->as.string;
+                        if (current_pair.value->type == JSON_STRING){
+                            resp->content[j].text= current_pair.value->as.string;
+                        }
                         continue;
                     }
                 }
@@ -138,15 +163,22 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
             continue;
         }
         if (0 == strcmp(key, "usage")) {
+            if (value->type != JSON_OBJECT) {
+                continue;
+            }
             JsonObject *msg_json = value->as.object;
             for (size_t j = 0; j < msg_json->count; j++) {
                 JsonPair current_pair = msg_json->pairs[j];
                 if (0 == strcmp(current_pair.key, "input_tokens")) {
-                    resp->usage.input_tokens = current_pair.value->as.number;
+                    if (current_pair.value->type == JSON_NUMBER) { 
+                        resp->usage.input_tokens = current_pair.value->as.number;
+                    }
                     continue;
                 }
                 if (0 == strcmp(current_pair.key, "output_tokens")) {
-                    resp->usage.output_tokens = current_pair.value->as.number;
+                    if (current_pair.value->type == JSON_NUMBER) { 
+                        resp->usage.output_tokens = current_pair.value->as.number;
+                    }
                     continue;
                 }
             }
