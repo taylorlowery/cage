@@ -2,11 +2,13 @@
 * Yes, I'm aware that libcurl would have made this a lot easier.
 */
 #include "http_client.h"
+#include <ctype.h>
 #include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -31,10 +33,27 @@ static void free_connection(Connection *conn) {
         SSL_shutdown(conn->ssl);
         SSL_free(conn->ssl);
     }
-    if (1 <= conn->sockfd) {
+    if (-1 != conn->sockfd) {
         close(conn->sockfd);
     }
     free(conn);
+}
+
+void free_http_response(HTTPResponse *http_response) {
+    if (NULL == http_response) {
+        return;
+    }
+    if (NULL != http_response->headers) {
+        for (size_t i = 0; i < http_response->header_count; i++) {
+            free(http_response->headers[i].key);
+            free(http_response->headers[i].value);
+        }
+        free(http_response->headers);
+    }
+    if (NULL != http_response->body) {
+        free(http_response->body);
+    }
+    free(http_response);
 }
 
 
@@ -199,7 +218,115 @@ static ssize_t recv_all(const Connection *conn, char **recv_buffer, size_t *buf_
     return total_bytes_received;
 }
 
-// TODO: return something meaningful.
+// parse headers from a raw http response and add them to
+// an HTTPResponse struct.
+static int parse_headers(HTTPResponse *http_response, const char *raw_response_buffer, FILE *error_stream) {
+    // skip status line?
+    const char *line = strstr(raw_response_buffer, "\r\n");
+    if (NULL == line) {
+        return -1;
+    }
+    line += 2;
+
+    // find "\r\n\r\n" separator
+    const char *header_end = strstr(raw_response_buffer, "\r\n\r\n");
+    if (NULL == header_end) {
+        return -1;
+    }
+
+    // allocate headers
+    if (http_response->header_capacity < 8) {
+        http_response->header_capacity = 8;
+    }
+    http_response->headers = calloc(http_response->header_capacity, sizeof(HttpHeader));
+    if (NULL == http_response->headers) {
+        fprintf(error_stream, "failed to allocate header space");
+        return -1;
+    }
+
+    // up to the separator, read each line by reading up to "\r\n"
+    while (line < header_end) {
+        // find the separator that ends the current header line
+        const char *line_end = strstr(line, "\r\n");
+        if (NULL == line_end || line_end > header_end) {
+            break;
+        }
+
+        // find the colon in the header
+        const char *colon = memchr(line, ':', line_end - line);
+        // if no colon was found, continue to the next header
+        if (colon == NULL) {
+            fprintf(error_stream, "unable to find colon in header: \"%.*s\"\n", (int)(line_end - line), line);
+            line = line_end + 2;
+            continue;
+        }
+
+        // if I have reached header capacity, increase and realloc
+        if (http_response->header_count == http_response->header_capacity) {
+            http_response->header_capacity *= 2;
+            HttpHeader *temp = realloc(http_response->headers, http_response->header_capacity * sizeof(HttpHeader));
+            if (NULL == temp) {
+                return -1;
+            }
+            http_response->headers = temp;
+        }
+
+        const char *key_start = line;
+        size_t key_len = colon - key_start;
+        const char *value_start = colon + 1;
+        // advance the "value" start past any whitespace.
+        while (value_start < line_end && isspace((unsigned char)*value_start)) {
+            value_start++;
+        }
+        size_t value_len = line_end - value_start;
+
+        // create HTTPHeader, set before to key, after to value
+        HttpHeader *h = &http_response->headers[http_response->header_count];
+
+        // allocate space for the key and val from the header
+        h->key = calloc(key_len + 1, sizeof(char));
+        if (NULL == h->key) {
+            fprintf(error_stream, "failed to allocate for header key");
+            return -1;
+        }
+        h->value = calloc(value_len + 1, sizeof(char));
+        if (NULL == h->value) {
+            fprintf(error_stream, "failed to allocate for header value");
+            free(h->key);
+            return -1;
+        }
+
+        memcpy(h->key, key_start, key_len);
+        h->key[key_len] = '\0';
+        memcpy(h->value, value_start, value_len);
+        h->value[value_len] = '\0';
+
+        // advance header count
+        http_response->header_count += 1;
+
+        line = line_end + 2;
+    }
+
+    return 0;
+}
+
+static char *get_response_header(const HTTPResponse *resp, const char *key) {
+    if (NULL == resp || NULL == key) {
+        return NULL;
+    }
+    for (size_t i = 0; i < resp->header_count; i++) {
+        if (0 == strcasecmp(resp->headers[i].key, key)) {
+            return resp->headers[i].value;
+        }
+    }
+    return NULL;
+}
+
+static int parse_chunked_body(HTTPResponse *resp, const char *body_start, size_t body_len){
+    return 0;
+}
+
+// parse a raw http response to an HTTPResponse struct.
 HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buffer, FILE *error_stream) {
     HTTPResponse *http_response = calloc(1, sizeof(HTTPResponse));
     if (NULL == http_response) {
@@ -209,26 +336,45 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
 
     int resp_status_code = get_status_code_from_response_body(raw_response_buffer);
 
-    char *resp_body = strstr(raw_response_buffer, "\r\n\r\n");
-    if (NULL == resp_body) {
-        fprintf(error_stream, "strstr on resp body");
-        free(http_response);
+    int parsed_headers = parse_headers(http_response, raw_response_buffer, error_stream);
+
+    if (0 != parsed_headers) {
+        free_http_response(http_response);
         return NULL;
     }
 
-    http_response->status_code = resp_status_code;
+    char *resp_body = strstr(raw_response_buffer, "\r\n\r\n");
+    if (NULL == resp_body) {
+        fprintf(error_stream, "strstr on resp body");
+        free_http_response(http_response);
+        return NULL;
+    }
+
     // skip four spaces to avoid duplicating '\r\n\r\n'
-    http_response->body = strdup(resp_body + 4);
+    resp_body = resp_body + 4;
+
+    http_response->status_code = resp_status_code;
+
+    char *transfer_encoding = get_response_header(http_response, "Transfer-Encoding");
+    if (NULL != transfer_encoding && 0 == strcasecmp(transfer_encoding, "chunked")) {
+        int body_parsed = parse_chunked_body(http_response, resp_body, strlen(resp_body));
+        if (0 != body_parsed) {
+            fprintf(error_stream, "failed to parse chunked body");
+            free_http_response(http_response);
+            return NULL;
+        }
+    } else {
+        http_response->body = strdup(resp_body);
+    }
+
     // validate strdup succeeded (no OOM)
     if (NULL == http_response->body) {
         fprintf(error_stream, "strdup on response body");
-        free(http_response);
+        free_http_response(http_response);
         return NULL;
     }
 
     http_response->body_length = strlen(http_response->body);
-    // TODO: parse headers from response and store in resp->headers
-    http_response->headers = NULL;
 
     return http_response;
 }

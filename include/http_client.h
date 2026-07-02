@@ -17,10 +17,15 @@ typedef struct {
     int status_code;
     char* body;
     size_t body_length;
-    char *headers;
+    HttpHeader *headers;
+    size_t header_count;
+    size_t header_capacity;
 } HTTPResponse;
 
 HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const HttpHeader *headers, const size_t header_count, const char* body, FILE *output_stream, FILE *error_stream);
 HTTPResponse *https_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const HttpHeader *headers, const size_t header_count, const char* body, FILE *output_stream, FILE *error_stream);
+
+void free_http_response(HTTPResponse *http_response);
+HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buffer, FILE *error_stream);
 
 #endif
