@@ -310,7 +310,10 @@ static int parse_headers(HTTPResponse *http_response, const char *raw_response_b
     return 0;
 }
 
-static char *get_response_header(const HTTPResponse *resp, const char *key) {
+// returns a borrowed pointer to the header value, owned by `resp`.
+// Do not free or mutate. Only valid as long as `resp` is valid.
+// returns NULL if the passed in key is not present in the resp headers.
+static const char *get_response_header(const HTTPResponse *resp, const char *key) {
     if (NULL == resp || NULL == key) {
         return NULL;
     }
@@ -322,7 +325,101 @@ static char *get_response_header(const HTTPResponse *resp, const char *key) {
     return NULL;
 }
 
-static int parse_chunked_body(HTTPResponse *resp, const char *body_start, size_t body_len){
+// body_start should point to the body portion of the raw header response, after the headers.
+static int parse_chunked_body(HTTPResponse *resp, char *body_start, size_t raw_body_len, FILE *error_stream){
+
+    size_t total_body_bytes = 0;
+    // first pass through:
+    // iterate through hex byte lines
+    // gather the full size,
+    // then allocate a buffer for the body.
+
+    char *line = body_start;
+    char *line_end = NULL;
+    const char *body_end = body_start + raw_body_len;
+
+    while (line < body_end) {
+        size_t chunk_size = strtoul(line, &line_end, 16);
+        if (line_end == line) {
+            // no hex digits parsed; show the offending token, bounded to the
+            // next CRLF (or buffer end) and capped at 64 so a runaway line
+            // doesn't dump the whole response.
+            const char *crlf = memchr(line, '\r', (size_t)(body_end - line));
+            size_t snippet = crlf ? (size_t)(crlf - line) : (size_t)(body_end - line);
+            if (snippet > 64) snippet = 64;
+            fprintf(error_stream,
+                    "chunk-size line at offset %zu has no hex digits: \"%.*s\"\n",
+                    (size_t)(line - body_start), (int)snippet, line);
+            return -1;
+        }
+        // validate that the hex token is followed by "\r\n" (chunk extensions
+        // like ";name=value" are rejected for now — add a comment if you
+        // later skip past them).
+        if ('\r' != *line_end || '\n' != *(line_end + 1)) {
+            size_t snippet = (size_t)(line_end + 2 - line);
+            if (snippet > 64) snippet = 64;
+            fprintf(error_stream,
+                    "chunk-size line at offset %zu not terminated by \\r\\n: \"%.*s\"\n",
+                    (size_t)(line - body_start), (int)snippet, line);
+            return -1;
+        }
+        if (chunk_size == 0) {
+            break;
+        }
+        total_body_bytes += chunk_size;
+        // advance past <hex>\r\n and <chunk>\r\n
+        line = line_end + 2 + chunk_size + 2;
+        if (line > body_end) {
+            fprintf(error_stream, "chunk extends past body end\n");
+            return -1;
+        }
+    }
+
+
+    // if the body had no length,
+    // just return.
+    if (0 == total_body_bytes) {
+        return 0;
+    }
+    char *body_buffer = calloc(total_body_bytes + 1, sizeof(char));
+    if (NULL == body_buffer) {
+        fprintf(error_stream, "failed to allocate memory for chunked body buffer");
+        return -1;
+    }
+
+    // second pass:
+    // iterate through the string lines and add them to the buffer
+    line = body_start;
+    line_end = NULL;
+    size_t offset = 0;
+
+    while (line < body_end) {
+        // scan the hex line
+        size_t chunk_size = strtoul(line, &line_end, 16);
+        // TODO: validate that the ending is \r\n.
+        // For now we'll trust first pass's validation.
+        if (0 == chunk_size) {
+            break;
+        }
+        //memcpy chars between line and line_end to body_buffer
+        memcpy(body_buffer + offset, line_end + 2, chunk_size);
+        offset += chunk_size;
+        // advance past next hex line
+        line = line_end + 2 + chunk_size + 2;
+        // if we're past body_end, break
+        if (line > body_end) {
+            fprintf(error_stream, "chunk extends past body end\n");
+            return -1;
+        }
+    }
+
+
+    body_buffer[total_body_bytes] = '\0';
+
+    // set the resp body to the buffer
+    resp->body = body_buffer;
+    resp->body_length = total_body_bytes;
+
     return 0;
 }
 
@@ -334,15 +431,18 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
         return NULL;
     }
 
+    // get http status
     int resp_status_code = get_status_code_from_response_body(raw_response_buffer);
+    http_response->status_code = resp_status_code;
 
+    // parse and set headers on response
     int parsed_headers = parse_headers(http_response, raw_response_buffer, error_stream);
-
     if (0 != parsed_headers) {
         free_http_response(http_response);
         return NULL;
     }
 
+    // find the end of the headers/beginning of response body by locating separator
     char *resp_body = strstr(raw_response_buffer, "\r\n\r\n");
     if (NULL == resp_body) {
         fprintf(error_stream, "strstr on resp body");
@@ -350,14 +450,15 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
         return NULL;
     }
 
-    // skip four spaces to avoid duplicating '\r\n\r\n'
+    // skip four characters to advance past '\r\n\r\n' separator
     resp_body = resp_body + 4;
+    size_t body_len = strlen(resp_body);
 
-    http_response->status_code = resp_status_code;
-
-    char *transfer_encoding = get_response_header(http_response, "Transfer-Encoding");
+    // parse a the response body as chunked if so specified in in the response headers.
+    // otherwise set the response body to the raw response body string.
+    const char *transfer_encoding = get_response_header(http_response, "Transfer-Encoding");
     if (NULL != transfer_encoding && 0 == strcasecmp(transfer_encoding, "chunked")) {
-        int body_parsed = parse_chunked_body(http_response, resp_body, strlen(resp_body));
+        int body_parsed = parse_chunked_body(http_response, resp_body, body_len, error_stream);
         if (0 != body_parsed) {
             fprintf(error_stream, "failed to parse chunked body");
             free_http_response(http_response);
@@ -365,16 +466,16 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
         }
     } else {
         http_response->body = strdup(resp_body);
+        http_response->body_length = strlen(http_response->body);
     }
 
     // validate strdup succeeded (no OOM)
     if (NULL == http_response->body) {
-        fprintf(error_stream, "strdup on response body");
+        fprintf(error_stream, "failed to allocate response body");
         free_http_response(http_response);
         return NULL;
     }
 
-    http_response->body_length = strlen(http_response->body);
 
     return http_response;
 }
