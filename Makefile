@@ -25,7 +25,11 @@ UNITY_SRC = test/vendor/unity/unity.c
 TEST_COMMON_SRC = $(SRC_FILES) $(UNITY_SRC)
 
 # binaries for each test file
-TEST_BINS = test_anthropic test_http_client test_parser test_lexer test_agent test_json
+TEST_BINS = test_anthropic \
+			test_http_client \
+			test_parser \
+			test_lexer \
+			test_agent
 
 $(TEST_BINS): test_%: test/test_%.c $(TEST_COMMON_SRC)
 	$(CC) $(CFLAGS) -Isrc $^ -o $@ $(LDFLAGS)
@@ -33,9 +37,9 @@ $(TEST_BINS): test_%: test/test_%.c $(TEST_COMMON_SRC)
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)
 
-PHONY: test clean
+.PHONY: test clean
 test: $(TEST_BINS)
 	@for t in $(TEST_BINS); do ./$$t || exit 1; done
 
 clean:
-	rm -f $(OUT) $(TEST_OUT) $(TEST_HTTP_CLIENT_OUT)
+	rm -f $(OUT) $(TEST_BINS)
