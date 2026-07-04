@@ -278,9 +278,11 @@ static void json_object(Parser *parser, JsonValue *value) {
     if (value->as.object->count == value->as.object->capacity) {
       realloc_json_object(parser, value->as.object);
       if (parser->had_error) {
+        free(pair);
         return;
       }
     }
+      free(pair);
   }
 
   consume(parser, TOKEN_RIGHTBRACE, "expected end of object");
