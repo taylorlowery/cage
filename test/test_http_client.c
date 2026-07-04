@@ -1,5 +1,4 @@
 #include "http_client.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "vendor/unity/unity.h"
@@ -146,8 +145,82 @@ void test_https_client_request_post(void) {
     }
 }
 
+// Test that parse_response_body_to_http_response correctly parses
+// a raw HTTP response with headers and body.
+void test_parse_response_body_parses_headers_and_body(void) {
+    const char *raw_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "X-Request-Id: abc-123\r\n"
+        "X-Custom: hello-world\r\n"
+        "\r\n"
+        "{\"ok\":true}";
+
+    HTTPResponse *resp = parse_response_body_to_http_response(raw_response, stderr);
+
+    TEST_ASSERT_NOT_NULL(resp);
+    TEST_ASSERT_EQUAL_INT(200, resp->status_code);
+    TEST_ASSERT_EQUAL_size_t(3, resp->header_count);
+
+    TEST_ASSERT_EQUAL_STRING("Content-Type", resp->headers[0].key);
+    TEST_ASSERT_EQUAL_STRING("application/json", resp->headers[0].value);
+
+    TEST_ASSERT_EQUAL_STRING("X-Request-Id", resp->headers[1].key);
+    TEST_ASSERT_EQUAL_STRING("abc-123", resp->headers[1].value);
+
+    TEST_ASSERT_EQUAL_STRING("X-Custom", resp->headers[2].key);
+    TEST_ASSERT_EQUAL_STRING("hello-world", resp->headers[2].value);
+
+    TEST_ASSERT_NOT_NULL(resp->body);
+    TEST_ASSERT_EQUAL_STRING("{\"ok\":true}", resp->body);
+
+    free_http_response(resp);
+}
+
+// Test that parse_response_body_to_http_response correctly handles
+// more headers than the initial capacity (8), triggering realloc.
+void test_parse_response_body_header_resizing(void) {
+    const char *raw_response =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Header-01: val01\r\n"
+        "X-Header-02: val02\r\n"
+        "X-Header-03: val03\r\n"
+        "X-Header-04: val04\r\n"
+        "X-Header-05: val05\r\n"
+        "X-Header-06: val06\r\n"
+        "X-Header-07: val07\r\n"
+        "X-Header-08: val08\r\n"
+        "X-Header-09: val09\r\n"
+        "X-Header-10: val10\r\n"
+        "\r\n"
+        "done";
+
+    HTTPResponse *resp = parse_response_body_to_http_response(raw_response, stderr);
+
+    TEST_ASSERT_NOT_NULL(resp);
+    TEST_ASSERT_EQUAL_INT(200, resp->status_code);
+    TEST_ASSERT_EQUAL_size_t(10, resp->header_count);
+
+    // Verify headers survived the realloc
+    TEST_ASSERT_EQUAL_STRING("X-Header-01", resp->headers[0].key);
+    TEST_ASSERT_EQUAL_STRING("val01", resp->headers[0].value);
+
+    TEST_ASSERT_EQUAL_STRING("X-Header-05", resp->headers[4].key);
+    TEST_ASSERT_EQUAL_STRING("val05", resp->headers[4].value);
+
+    TEST_ASSERT_EQUAL_STRING("X-Header-10", resp->headers[9].key);
+    TEST_ASSERT_EQUAL_STRING("val10", resp->headers[9].value);
+
+    TEST_ASSERT_NOT_NULL(resp->body);
+    TEST_ASSERT_EQUAL_STRING("done", resp->body);
+
+    free_http_response(resp);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_parse_response_body_parses_headers_and_body);
+    RUN_TEST(test_parse_response_body_header_resizing);
     RUN_TEST(test_http_client_request_get);
     RUN_TEST(test_https_client_request_get);
     RUN_TEST(test_http_client_request_post);
