@@ -244,8 +244,6 @@ void runInference(char *model, int max_tokens, AnthropicMessage *messages, int m
         return;
     }
 
-    fprintf(stdout, "The reply says... \"%s\"\n", http_resp->body);
-
     Parser p;
     init_parser(&p, http_resp->body, stderr);
 

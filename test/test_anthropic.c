@@ -109,6 +109,10 @@ void test_deserialize_json(void) {
     free_json_value(json_parsed);
 }
 
+void test_run(void) {
+  Run();
+}
+
 
 int main(void) {
     UNITY_BEGIN();
@@ -116,6 +120,7 @@ int main(void) {
     RUN_TEST(test_serialize_request_body_single_message);
     RUN_TEST(test_serialize_request_body_multiple_messages);
     RUN_TEST(test_deserialize_json);
+    RUN_TEST(test_run);
     UNITY_END();
     return 0;
 }
