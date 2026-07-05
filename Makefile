@@ -7,8 +7,6 @@ OPENSSL_LDFLAGS := $(shell pkg-config --libs openssl)
 CFLAGS = -Wall -Wextra -Wpedantic -Iinclude -Itest/vendor/unity $(OPENSSL_CFLAGS)
 LDFLAGS = $(OPENSSL_LDFLAGS)
 OUT = cage
-TEST_OUT = test_runner
-TEST_HTTP_CLIENT_OUT = test_http_client
 
 SRC_FILES = src/agent.c \
 			src/anthropic.c \
@@ -37,8 +35,13 @@ $(TEST_BINS): test_%: test/test_%.c $(TEST_COMMON_SRC)
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)
 
-.PHONY: test clean
-test: $(TEST_BINS)
+.PHONY: build_tests test clean
+
+# Build all test binaries
+build_tests: $(TEST_BINS)
+
+# run all tests
+test: build_tests
 	@for t in $(TEST_BINS); do ./$$t || exit 1; done
 
 clean:
