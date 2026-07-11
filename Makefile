@@ -29,13 +29,15 @@ TEST_BINS = test_anthropic \
 			test_lexer \
 			test_agent
 
+VALGRIND = valgrind --leak-check=full --error-exitcode=1 --errors-for-leak-kinds=definite,indirect
+
 $(TEST_BINS): test_%: test/test_%.c $(TEST_COMMON_SRC)
 	$(CC) $(CFLAGS) -Isrc $^ -o $@ $(LDFLAGS)
 
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)
 
-.PHONY: build_tests test clean
+.PHONY: build_tests test clean test_valgrind
 
 # Build all test binaries
 build_tests: $(TEST_BINS)
@@ -46,3 +48,10 @@ test: build_tests
 
 clean:
 	rm -f $(OUT) $(TEST_BINS)
+
+# valgrind has some trouble with the zig compiler,
+# so I recommend running build_tests first,
+# overriding the CC variable with `clang`:
+# `make clean && make build_tests CC=clang`
+test_valgrind: build_tests
+	@for t in  $(TEST_BINS); do $(VALGRIND) ./$$t || exit 1; done 
