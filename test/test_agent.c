@@ -36,7 +36,7 @@ void test_run(void) {
 
 int main(void) {
     UNITY_BEGIN();
-    // RUN_TEST(test_greet);
-    test_run();
+    RUN_TEST(test_greet);
+    RUN_TEST(test_run);
     return UNITY_END();
 }

@@ -7,8 +7,6 @@ OPENSSL_LDFLAGS := $(shell pkg-config --libs openssl)
 CFLAGS = -Wall -Wextra -Wpedantic -Iinclude -Itest/vendor/unity $(OPENSSL_CFLAGS)
 LDFLAGS = $(OPENSSL_LDFLAGS)
 OUT = cage
-TEST_OUT = test_runner
-TEST_HTTP_CLIENT_OUT = test_http_client
 
 SRC_FILES = src/agent.c \
 			src/anthropic.c \
@@ -24,19 +22,36 @@ UNITY_SRC = test/vendor/unity/unity.c
 # Common source files used by all test binaries
 TEST_COMMON_SRC = $(SRC_FILES) $(UNITY_SRC)
 
+# binaries for each test file
+TEST_BINS = test_anthropic \
+			test_http_client \
+			test_parser \
+			test_lexer \
+			test_agent
+
+VALGRIND = valgrind --leak-check=full --error-exitcode=1 --errors-for-leak-kinds=definite,indirect
+
+$(TEST_BINS): test_%: test/test_%.c $(TEST_COMMON_SRC)
+	$(CC) $(CFLAGS) -Isrc $^ -o $@ $(LDFLAGS)
+
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)
 
-$(TEST_OUT): $(TEST_COMMON_SRC) test/test_anthropic.c
-	$(CC) $(CFLAGS) -Isrc $^ -o $@ $(LDFLAGS)
+.PHONY: build_tests test clean test_valgrind
 
-$(TEST_HTTP_CLIENT_OUT): $(TEST_COMMON_SRC) test/test_http_client.c
-	$(CC) $(CFLAGS) -Isrc $^ -o $@ $(LDFLAGS)
+# Build all test binaries
+build_tests: $(TEST_BINS)
 
-PHONY: test clean
-test: $(TEST_OUT) $(TEST_HTTP_CLIENT_OUT)
-	-./$(TEST_OUT)
-	-./$(TEST_HTTP_CLIENT_OUT)
+# run all tests
+test: build_tests
+	@for t in $(TEST_BINS); do ./$$t || exit 1; done
 
 clean:
-	rm -f $(OUT) $(TEST_OUT) $(TEST_HTTP_CLIENT_OUT)
+	rm -f $(OUT) $(TEST_BINS)
+
+# valgrind has some trouble with the zig compiler,
+# so I recommend running build_tests first,
+# overriding the CC variable with `clang`:
+# `make clean && make build_tests CC=clang`
+test_valgrind: build_tests
+	@for t in  $(TEST_BINS); do $(VALGRIND) ./$$t || exit 1; done 

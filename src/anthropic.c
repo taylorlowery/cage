@@ -188,6 +188,8 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
     return resp;
 }
 
+// TODO: get this out of its very rough state.
+// Currently this is MVP for validating our parser, lexer, and http_client.
 // Essentially recreating this curl:
 // curl https://api.anthropic.com/v1/messages \
 //      --header "x-api-key: $ANTHROPIC_API_KEY" \
@@ -251,6 +253,10 @@ void runInference(char *model, int max_tokens, AnthropicMessage *messages, int m
 
     AnthropicResponse *resp = deserialize_response(v);
     fprintf(stdout, "Claude says: \"%s\"", resp->content[0].text);
+    free_http_response(http_resp);
+    free_json_value(v);
+    free(resp->content);
+    free(resp);
 }
 
 

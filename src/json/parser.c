@@ -160,27 +160,25 @@ static void free_json_value_contents(JsonValue *value) {
       if (NULL == value->as.array) {
         break;
       }
-      if (NULL == value->as.array->items) {
-        break;
+      if (NULL != value->as.array->items) {
+        for (size_t i = 0; i < value->as.array->count; i++) {
+          free_json_value_contents(&(value->as.array->items[i]));
+        }
+        free(value->as.array->items);
       }
-      for (size_t i = 0; i < value->as.array->count; i++) {
-        free_json_value_contents(&(value->as.array->items[i]));
-      }
-      free(value->as.array->items);
       free(value->as.array);
       break;
     case JSON_OBJECT:
       if (NULL == value->as.object) {
         break;
       }
-      if (NULL == value->as.object->pairs) {
-        break;
+      if (NULL != value->as.object->pairs) {
+        for (size_t i = 0; i < value->as.object->count; i++) {
+          free_json_value((value->as.object->pairs[i].value));
+          free(value->as.object->pairs[i].key);
+        }
+        free(value->as.object->pairs);
       }
-      for (size_t i = 0; i < value->as.object->count; i++) {
-        free_json_value((value->as.object->pairs[i].value));
-        free(value->as.object->pairs[i].key);
-      }
-      free(value->as.object->pairs);
       free(value->as.object);
       break;
     case JSON_STRING:
@@ -278,9 +276,11 @@ static void json_object(Parser *parser, JsonValue *value) {
     if (value->as.object->count == value->as.object->capacity) {
       realloc_json_object(parser, value->as.object);
       if (parser->had_error) {
+        free(pair);
         return;
       }
     }
+      free(pair);
   }
 
   consume(parser, TOKEN_RIGHTBRACE, "expected end of object");
