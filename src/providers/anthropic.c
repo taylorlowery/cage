@@ -16,7 +16,16 @@
 #define ANTHROPIC_MESSAGES_PATH "/v1/messages"
 #define REQUEST_BUFFER_LEN 8192
 
-char *role_to_string(AnthropicMessageRole role) {
+static int copy_string(const char *src, char **dest, const char *field, FILE *error_stream) {
+    *dest = strdup(src);
+    if (NULL == *dest) {
+        fprintf(error_stream, "failed to deserialize field '%s'\n", field);
+        return -1;
+    }
+    return 0;
+}
+
+const char *role_to_string(AnthropicMessageRole role) {
     switch(role) {
         case ROLE_SYSTEM:
             return "system";
@@ -80,7 +89,33 @@ size_t serialize_request_body(char *body_buf, size_t buffer_len, AnthropicReques
     return cursor;
 }
 
-AnthropicResponse *deserialize_response(JsonValue *json) {
+
+void free_anthropic_response(AnthropicResponse *resp) {
+    if (NULL == resp) {
+        // mission accomplished
+        return;
+    }
+    free(resp->id);
+    free(resp->type);
+    free(resp->role);
+    free(resp->model);
+    free(resp->stop_reason);
+    free(resp->stop_sequence);
+    if (NULL != resp->content) {
+        for (size_t i = 0; i < resp->content_count; i++) {
+            free(resp->content[i].type);
+            free(resp->content[i].text);
+        }
+    }
+    free(resp->content);
+    free(resp);
+}
+
+AnthropicResponse *deserialize_response(JsonValue *json, FILE *error_stream) {
+    if (NULL == json || JSON_OBJECT != json->type || NULL == error_stream) {
+        return NULL;
+    }
+
     AnthropicResponse *resp = calloc(1, sizeof(AnthropicResponse));
     if (NULL == resp) {
         return NULL;
@@ -91,38 +126,47 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
         char *key = json->as.object->pairs[i].key;
         JsonValue *value = json->as.object->pairs[i].value;
         if (0 == strcmp(key, "id")) {
-            if (value->type == JSON_STRING) {
-                resp->id = value->as.string;
+            if (value->type == JSON_STRING &&
+                0 != copy_string(value->as.string, &resp->id, "id", error_stream)) {
+                goto cleanup;
             }
             continue;
         }
         if (0 == strcmp(key, "type")) {
-            if (value->type == JSON_STRING) {
-                resp->type = value->as.string;
+            if (value->type == JSON_STRING &&
+                0 != copy_string(value->as.string, &resp->type, "type", error_stream)) {
+                goto cleanup;
             }
             continue;
         }
         if (0 == strcmp(key, "role")) {
-            if (value->type == JSON_STRING) {
-                resp->role = value->as.string;
+            if (value->type == JSON_STRING &&
+                0 != copy_string(value->as.string, &resp->role, "role", error_stream)) {
+                goto cleanup;
             }
             continue;
         }
         if (0 == strcmp(key, "model")) {
-            if (value->type == JSON_STRING) {
-                resp->model = value->as.string;
+            if (value->type == JSON_STRING &&
+                0 != copy_string(value->as.string, &resp->model, "model", error_stream)) {
+                goto cleanup;
             }
             continue;
         }
         if (0 == strcmp(key, "stop_reason")) {
-            if (value->type == JSON_STRING) {
-                resp->stop_reason = value->as.string;
+            if (value->type == JSON_STRING &&
+                0 != copy_string(value->as.string, &resp->stop_reason,
+                                 "stop_reason", error_stream)) {
+                goto cleanup;
             }
             continue;
         }
         if (0 == strcmp(key, "stop_sequence")) {
             if (value->type == JSON_STRING) {
-                resp->stop_sequence = value->as.string;
+                if (0 != copy_string(value->as.string, &resp->stop_sequence,
+                                     "stop_sequence", error_stream)) {
+                    goto cleanup;
+                }
             } else if (value->type == JSON_NULL) {
                 resp->stop_sequence = NULL;
             }
@@ -132,13 +176,17 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
             if (value->type != JSON_ARRAY) {
                 continue;
             }
-            int content_count = value->as.array->count;
+            size_t content_count = value->as.array->count;
             if (content_count < 1) {
                 continue;
             }
             resp->content = calloc(content_count, sizeof(AnthropicContent));
+            if (NULL == resp->content) {
+                fprintf(error_stream, "failed to allocate response content\n");
+                goto cleanup;
+            }
             resp->content_count = content_count;
-            for (int j = 0; j < content_count; j++) {
+            for (size_t j = 0; j < content_count; j++) {
                 JsonValue item_val = value->as.array->items[j];
                 if (item_val.type != JSON_OBJECT) {
                     continue;
@@ -147,14 +195,20 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
                 for (size_t k = 0; k < msg_json->count; k++) {
                     JsonPair current_pair = msg_json->pairs[k];
                     if (0 == strcmp(current_pair.key, "type")) {
-                        if (current_pair.value->type == JSON_STRING) {
-                            resp->content[j].type = current_pair.value->as.string;
+                        if (current_pair.value->type == JSON_STRING &&
+                            0 != copy_string(current_pair.value->as.string,
+                                             &resp->content[j].type,
+                                             "content.type", error_stream)) {
+                            goto cleanup;
                         }
                         continue;
                     }
                     if (0 == strcmp(current_pair.key, "text")) {
-                        if (current_pair.value->type == JSON_STRING){
-                            resp->content[j].text= current_pair.value->as.string;
+                        if (current_pair.value->type == JSON_STRING &&
+                            0 != copy_string(current_pair.value->as.string,
+                                             &resp->content[j].text,
+                                             "content.text", error_stream)) {
+                            goto cleanup;
                         }
                         continue;
                     }
@@ -186,7 +240,13 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
     }
 
     return resp;
+
+cleanup:
+    free_anthropic_response(resp);
+    return NULL;
 }
+
+
 
 // TODO: get this out of its very rough state.
 // Currently this is MVP for validating our parser, lexer, and http_client.
@@ -205,11 +265,11 @@ AnthropicResponse *deserialize_response(JsonValue *json) {
 // }'
 // return the latest response from the API.
 // caller is responsible for freeing it.
-void runInference(char *model, int max_tokens, AnthropicMessage *messages, int message_count) {
+AnthropicResponse *run_inference(char *model, int max_tokens, AnthropicMessage *messages, int message_count) {
     char *anthropic_api_key = getenv("ANTHROPIC_API_KEY");
     if (NULL == anthropic_api_key) {
         fprintf(stderr, "Failed to find the API Key from the expected env var %s\n", "ANTHROPIC_API_KEY");
-        return;
+        return NULL;
     }
 
     HttpHeader headers[3] = {
@@ -240,28 +300,48 @@ void runInference(char *model, int max_tokens, AnthropicMessage *messages, int m
 
     serialize_request_body(json_buf, 8192, &request);
 
-    HTTPResponse *http_resp = https_request(HTTP_POST, ANTHROPIC_URL, "443", ANTHROPIC_MESSAGES_PATH, headers, 3, json_buf, stdout, stderr);
+    HTTPResponse *http_resp = NULL;
+    JsonValue *v = NULL;
+
+    http_resp = https_request(HTTP_POST, ANTHROPIC_URL, "443", ANTHROPIC_MESSAGES_PATH, headers, 3, json_buf, stdout, stderr);
     if (NULL == http_resp) {
         fprintf(stderr, "Failed to get response from Anthropic API\n");
-        return;
+        goto cleanup;
     }
 
     Parser p;
     init_parser(&p, http_resp->body, stderr);
 
-    JsonValue *v = parse_json(&p);
+    v = parse_json(&p);
+    if (NULL == v) {
+        fprintf(stderr, "failed to parse response to json\n");
+        goto cleanup;
+    }
 
-    AnthropicResponse *resp = deserialize_response(v);
-    fprintf(stdout, "Claude says: \"%s\"", resp->content[0].text);
-    free_http_response(http_resp);
+    AnthropicResponse *resp = deserialize_response(v, stderr);
+    if (NULL == resp) {
+        fprintf(stderr, "failed to deserialize response\n");
+        goto cleanup;
+    }
+
     free_json_value(v);
-    free(resp->content);
-    free(resp);
+    free_http_response(http_resp);
+
+    return resp;
+
+cleanup:
+    if (NULL != v) {
+        free_json_value(v);
+    }
+    if (NULL != http_resp) {
+        free_http_response(http_resp);
+    }
+    return NULL;
 }
 
 
 
-// prepare messages and pass thadem to runInference()
+// prepare messages and pass them to run_inference()
 void Run(void) {
     AnthropicMessage messages[1] = {
         {
@@ -270,5 +350,6 @@ void Run(void) {
         }
     };
 
-    runInference(DEFAULT_MODEL, DEFAULT_MAX_TOKENS, messages, 1);
+    AnthropicResponse *resp = run_inference(DEFAULT_MODEL, DEFAULT_MAX_TOKENS, messages, 1);
+    free_anthropic_response(resp);
 }

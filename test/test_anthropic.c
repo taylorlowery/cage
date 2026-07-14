@@ -85,7 +85,7 @@ void test_deserialize_json(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_OBJECT, json_parsed->type, "parsed value is not a JSON object");
     TEST_ASSERT_EQUAL_INT_MESSAGE(9, json_parsed->as.object->count, "expected 9 top-level fields");
 
-    AnthropicResponse *resp = deserialize_response(json_parsed);
+    AnthropicResponse *resp = deserialize_response(json_parsed, stderr);
     TEST_ASSERT_NOT_NULL_MESSAGE(resp, "deserialize_response returned NULL");
     TEST_ASSERT_EQUAL_STRING("msg_01Awgi17AdAU3HWie4bCDfQ7", resp->id);
     TEST_ASSERT_EQUAL_STRING("message", resp->type);

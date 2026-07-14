@@ -9,7 +9,7 @@ LDFLAGS = $(OPENSSL_LDFLAGS)
 OUT = cage
 
 SRC_FILES = src/agent.c \
-			src/anthropic.c \
+			src/providers/anthropic.c \
 			src/http_client.c \
 			src/json/lexer.c \
 			src/json/parser.c

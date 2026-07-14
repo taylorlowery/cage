@@ -56,7 +56,9 @@ typedef struct {
 } AnthropicResponse;
 
 size_t serialize_request_body(char *body_buf, size_t buffer_len, AnthropicRequest *request);
-AnthropicResponse *deserialize_response(JsonValue *json);
+AnthropicResponse *deserialize_response(JsonValue *json, FILE *error_stream);
+
+AnthropicResponse *run_inference(char *model, int max_tokens, AnthropicMessage *messages, int message_count);
 
 void Run(void);
 
