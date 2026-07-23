@@ -28,11 +28,12 @@ typedef struct {
 } InferenceResponse;
 
 typedef struct {
-    // some kind of state/context
-    // function pointer for running inference?
-    // function pointer for destroying provider instance?
+    // provider context for containing api keys and other provider-specific config.
     void *provider_context;
-    void (*complete_inference)(void *context, const Conversation *conv, InferenceResponse out);
+    // provider-specific code should fulfill this contract to map provider-specific responses
+    // to our provider-agnostic structs.
+    void (*complete_inference)(void *context, const Conversation *conv, InferenceResponse *out);
+    // provider-specific context should provide a function for safely de-allocating
     void (*destroy_provider_context)(void *context);
 } InferenceProvider;
 

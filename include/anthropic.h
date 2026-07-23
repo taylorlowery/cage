@@ -1,5 +1,4 @@
 #ifndef ANTHROPIC_H
-
 #define ANTHROPIC_H
 
 #include "json.h"
@@ -45,6 +44,11 @@ typedef struct {
 } AnthropicUsage;
 
 typedef struct {
+    char *type;
+    char *message;
+} AnthropicError;
+
+typedef struct {
     char *id;
     char *type;
     char *role;
@@ -54,6 +58,7 @@ typedef struct {
     char *stop_reason;
     char *stop_sequence;
     AnthropicUsage usage;
+    AnthropicError *error;
 } AnthropicResponse;
 
 typedef struct {
@@ -65,15 +70,15 @@ typedef struct {
     size_t max_tokens;
     FILE *error_stream;
     FILE *output_steam;
-    
 } AnthropicContext;
 
-size_t serialize_request_body(char *body_buf, size_t buffer_len, AnthropicRequest *request);
-AnthropicResponse *deserialize_response(JsonValue *json, FILE *error_stream);
+size_t serialize_anthropic_request(char *body_buf, size_t buffer_len, AnthropicRequest *request);
+AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_stream);
 
-AnthropicResponse *run_inference(char *api_key, char *model, int max_tokens, AnthropicMessage *messages, int message_count, FILE *error_stream);
+AnthropicResponse *anthropic_run_inference(char *api_key, char *model, int max_tokens, AnthropicMessage *messages, int message_count, FILE *error_stream);
 
-void anthropic_complete_inference(void *context, const Conversation *conv, InferenceResponse out);
+// fulfills contract for provider-agnostic agent
+void anthropic_complete_inference(void *context, const Conversation *conv, InferenceResponse *out);
 
 void Run(void);
 

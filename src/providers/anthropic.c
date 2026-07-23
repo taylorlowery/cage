@@ -41,7 +41,7 @@ const char *role_to_string(AnthropicMessageRole role) {
 
 // serialize_request_body writes the contents of an AnthropicRequest
 // to a buffer as a JSON string.
-size_t serialize_request_body(char *body_buf, size_t buffer_len, AnthropicRequest *request){
+size_t serialize_anthropic_request(char *body_buf, size_t buffer_len, AnthropicRequest *request){
     size_t cursor = snprintf(
         body_buf,
         buffer_len,
@@ -107,11 +107,16 @@ void free_anthropic_response(AnthropicResponse *resp) {
             free(resp->content[i].text);
         }
     }
+    if (NULL != resp->error) {
+        free(resp->error->message);
+        free(resp->error->type);
+        free(resp);
+    }
     free(resp->content);
     free(resp);
 }
 
-AnthropicResponse *deserialize_response(JsonValue *json, FILE *error_stream) {
+AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_stream) {
     if (NULL == json || JSON_OBJECT != json->type || NULL == error_stream) {
         return NULL;
     }
@@ -224,14 +229,40 @@ AnthropicResponse *deserialize_response(JsonValue *json, FILE *error_stream) {
             for (size_t j = 0; j < msg_json->count; j++) {
                 JsonPair current_pair = msg_json->pairs[j];
                 if (0 == strcmp(current_pair.key, "input_tokens")) {
-                    if (current_pair.value->type == JSON_NUMBER) { 
+                    if (current_pair.value->type == JSON_NUMBER) {
                         resp->usage.input_tokens = current_pair.value->as.number;
                     }
                     continue;
                 }
                 if (0 == strcmp(current_pair.key, "output_tokens")) {
-                    if (current_pair.value->type == JSON_NUMBER) { 
+                    if (current_pair.value->type == JSON_NUMBER) {
                         resp->usage.output_tokens = current_pair.value->as.number;
+                    }
+                    continue;
+                }
+            }
+        }
+        if (0 == strcmp(key, "error")) {
+            if (value->type != JSON_OBJECT) {
+                continue;
+            }
+            resp->error = calloc(1, sizeof(AnthropicError));
+            if (NULL == resp->error) {
+                fprintf(error_stream, "failed to allocate space for error\n");
+                goto cleanup;
+            }
+            JsonObject *error_json = value->as.object;
+            for (size_t j = 0; j < error_json->count; j++) {
+                JsonPair current_pair = error_json->pairs[j];
+                if (0 == strcmp("type", current_pair.key)) {
+                    if (JSON_STRING == current_pair.value->type) {
+                        resp->error->type = strdup(current_pair.value->as.string);
+                    }
+                    continue;
+                }
+                if (0 == strcmp("message", current_pair.key)) {
+                    if (JSON_STRING == current_pair.value->type) {
+                        resp->error->message = strdup(current_pair.value->as.string);
                     }
                     continue;
                 }
@@ -265,7 +296,7 @@ cleanup:
 // }'
 // return the latest response from the API.
 // caller is responsible for freeing it.
-AnthropicResponse *run_inference(char *api_key, char *model, int max_tokens, AnthropicMessage *messages, int message_count, FILE *error_stream) {
+AnthropicResponse *anthropic_run_inference(char *api_key, char *model, int max_tokens, AnthropicMessage *messages, int message_count, FILE *error_stream) {
     if (NULL == api_key) {
         fprintf(error_stream, "no anthropic api ke provided\n");
         return NULL;
@@ -301,7 +332,7 @@ AnthropicResponse *run_inference(char *api_key, char *model, int max_tokens, Ant
 
     char json_buf[8192];
 
-    serialize_request_body(json_buf, 8192, &request);
+    serialize_anthropic_request(json_buf, 8192, &request);
 
     HTTPResponse *http_resp = NULL;
     JsonValue *v = NULL;
@@ -321,7 +352,7 @@ AnthropicResponse *run_inference(char *api_key, char *model, int max_tokens, Ant
         goto cleanup;
     }
 
-    AnthropicResponse *resp = deserialize_response(v, stderr);
+    AnthropicResponse *resp = deserialize_anthropic_response(v, stderr);
     if (NULL == resp) {
         fprintf(stderr, "failed to deserialize response\n");
         goto cleanup;
@@ -344,28 +375,9 @@ cleanup:
 
 
 
-// TODO: remove this function, which exists to easily test
-// preparing messages and pass them to run_inference()
-void Run(void) {
-    char *anthropic_api_key = getenv("ANTHROPIC_API_KEY");
-    if (NULL == anthropic_api_key) {
-        fprintf(stderr, "Failed to find the API Key from the expected env var %s\n", "ANTHROPIC_API_KEY");
-        return;
-    }
-    AnthropicMessage messages[1] = {
-        {
-            .role = ANTHROPIC_ROLE_USER,
-            .content = "Howdy!"
-        }
-    };
-
-    AnthropicResponse *resp = run_inference(anthropic_api_key, DEFAULT_MODEL, DEFAULT_MAX_TOKENS, messages, 1, stderr);
-    free_anthropic_response(resp);
-}
-
 // function to map agent conversation to anthropic conversation.
 // must be freed by caller.
-AnthropicMessage *agent_messages_to_anthropic_messages(Conversation *conv) {
+AnthropicMessage *agent_messages_to_anthropic_messages(const Conversation *conv) {
     if (NULL == conv->messages || conv->message_count == 0) {
         return NULL;
     }
@@ -420,29 +432,45 @@ AnthropicContext *create_anthropic_context(char *api_key, char *model) {
     return a;
 }
 
-void complete_inference (void *context, const Conversation *conv, InferenceResponse *out) {
+void anthropic_complete_inference (void *context, const Conversation *conv, InferenceResponse *out) {
     if (NULL == context) {
         // TODO: error somehow
         return;
     }
     AnthropicContext *anthropic_ctx = context;
-    
+
     AnthropicMessage *anthropic_messages = agent_messages_to_anthropic_messages(conv);
     if (NULL == anthropic_messages) {
         // TODO: error somehow
         return;
     }
 
-    AnthropicResponse *resp = run_inference(anthropic_ctx->api_key, anthropic_ctx->model, anthropic_ctx->max_tokens, anthropic_messages, conv->message_count, stdout);
+    AnthropicResponse *resp = anthropic_run_inference(anthropic_ctx->api_key, anthropic_ctx->model, anthropic_ctx->max_tokens, anthropic_messages, conv->message_count, stdout);
 
     if (NULL == resp) {
         // TODO: error somehow
         return;
     }
 
-    out->text = strdup(resp->content->text);
-    out->stop_reason = strdup(resp->stop_reason);
-    // todo: figure out tool calls.
+    if (0 == strcmp("error", resp->type)) {
+        if (NULL == resp->error) {
+            fprintf(stderr, "ERROR WAS NULL?!\n");
+            free_anthropic_response(resp);
+            return;
+        }
+
+        fprintf(stderr, "%s: %s\n", resp->error->type, resp->error->message);
+        free_anthropic_response(resp);
+        return;
+    }
+
+    if (NULL != resp->content && resp->content_count > 0) {
+        out->text = resp->content->text ? strdup(resp->content->text) : NULL;
+    }
+    out->stop_reason = resp->stop_reason ? strdup(resp->stop_reason) : NULL;
+
+    free_anthropic_response(resp);
+    // todo: figure out tool calls (need to see a tool call response)
 }
 
 
@@ -460,4 +488,26 @@ void destroy_anthropic_context (void *context) {
     free(c->url_path);
     free(c);
 }
+//
+// TODO: remove this function, which exists to easily test
+// preparing messages and pass them to run_inference()
+void Run(void) {
+    AnthropicContext *ctx = create_anthropic_context(NULL, NULL);
+    Message messages[1] = {
+        {
+            .role = USER,
+            .message = "Howdy!"
+        }
+    };
+    Conversation conv = {
+        .messages = messages,
+        .message_capacity = 1,
+        .message_count = 1,
+    };
 
+    InferenceResponse *resp = calloc(1, sizeof(InferenceResponse));
+
+    anthropic_complete_inference(ctx, &conv, resp);
+
+    fprintf(stdout, "Claude replies: %s\n", resp->text);
+}
