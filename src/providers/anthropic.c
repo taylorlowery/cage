@@ -1,11 +1,11 @@
 #include "anthropic.h"
 #include "http_client.h"
 #include "json.h"
+#include "provider.h"
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <curl/curl.h>
 
 // types below based on the documentation at https://platform.claude.com/docs/en/build-with-claude/working-with-messages
 
@@ -27,11 +27,11 @@ static int copy_string(const char *src, char **dest, const char *field, FILE *er
 
 const char *role_to_string(AnthropicMessageRole role) {
     switch(role) {
-        case ROLE_SYSTEM:
+        case ANTHROPIC_ROLE_SYSTEM:
             return "system";
-        case ROLE_USER:
+        case ANTHROPIC_ROLE_USER:
             return "user";
-        case ROLE_ASSISTANT:
+        case ANTHROPIC_ROLE_ASSISTANT:
             return "assistant";
         default:
             return "unsupported role";
@@ -265,17 +265,20 @@ cleanup:
 // }'
 // return the latest response from the API.
 // caller is responsible for freeing it.
-AnthropicResponse *run_inference(char *model, int max_tokens, AnthropicMessage *messages, int message_count) {
-    char *anthropic_api_key = getenv("ANTHROPIC_API_KEY");
-    if (NULL == anthropic_api_key) {
-        fprintf(stderr, "Failed to find the API Key from the expected env var %s\n", "ANTHROPIC_API_KEY");
+AnthropicResponse *run_inference(char *api_key, char *model, int max_tokens, AnthropicMessage *messages, int message_count, FILE *error_stream) {
+    if (NULL == api_key) {
+        fprintf(error_stream, "no anthropic api ke provided\n");
+        return NULL;
+    }
+    if (NULL == model) {
+        fprintf(error_stream, "no model provided\n");
         return NULL;
     }
 
     HttpHeader headers[3] = {
         {
             .key = "x-api-key",
-            .value = anthropic_api_key,
+            .value = api_key,
         },
         {
             .key = "anthropic-version",
@@ -341,15 +344,120 @@ cleanup:
 
 
 
-// prepare messages and pass them to run_inference()
+// TODO: remove this function, which exists to easily test
+// preparing messages and pass them to run_inference()
 void Run(void) {
+    char *anthropic_api_key = getenv("ANTHROPIC_API_KEY");
+    if (NULL == anthropic_api_key) {
+        fprintf(stderr, "Failed to find the API Key from the expected env var %s\n", "ANTHROPIC_API_KEY");
+        return;
+    }
     AnthropicMessage messages[1] = {
         {
-            .role = ROLE_USER,
+            .role = ANTHROPIC_ROLE_USER,
             .content = "Howdy!"
         }
     };
 
-    AnthropicResponse *resp = run_inference(DEFAULT_MODEL, DEFAULT_MAX_TOKENS, messages, 1);
+    AnthropicResponse *resp = run_inference(anthropic_api_key, DEFAULT_MODEL, DEFAULT_MAX_TOKENS, messages, 1, stderr);
     free_anthropic_response(resp);
 }
+
+// function to map agent conversation to anthropic conversation.
+// must be freed by caller.
+AnthropicMessage *agent_messages_to_anthropic_messages(Conversation *conv) {
+    if (NULL == conv->messages || conv->message_count == 0) {
+        return NULL;
+    }
+    AnthropicMessage *anthropic_messages = calloc(conv->message_count, sizeof(AnthropicMessage));
+    for (size_t i = 0; i < conv->message_count; i++) {
+        anthropic_messages[i].content = conv->messages[i].message;
+        switch (conv->messages[i].role) {
+            case USER:
+                anthropic_messages[i].role = ANTHROPIC_ROLE_USER;
+                break;
+            case ASSISTANT:
+                anthropic_messages[i].role = ANTHROPIC_ROLE_ASSISTANT;
+                break;
+            case SYSTEM:
+                anthropic_messages[i].role = ANTHROPIC_ROLE_SYSTEM;
+                break;
+        }
+    }
+
+    return anthropic_messages;
+}
+
+AnthropicContext *create_anthropic_context(char *api_key, char *model) {
+    if (NULL == api_key) {
+        char *anthropic_api_key = getenv("ANTHROPIC_API_KEY");
+        if (NULL == anthropic_api_key) {
+            fprintf(stderr, "Failed to find the API Key from the expected env var %s\n", "ANTHROPIC_API_KEY");
+            return NULL;
+        }
+        api_key = strdup(anthropic_api_key);
+    }
+
+    if (NULL == model) {
+        model = strdup(DEFAULT_MODEL);
+    }
+
+    AnthropicContext *a = calloc(1, sizeof(AnthropicContext));
+    if (NULL == a) {
+        fprintf(stderr, "failed to allocate space for anthropic context\n");
+        return NULL;
+    }
+
+    a->api_key = api_key;
+    a->model = model;
+    a->api_version = strdup(ANTHROPIC_VERSION);
+    a->api_url = strdup(ANTHROPIC_URL);
+    a->url_path = strdup(ANTHROPIC_MESSAGES_PATH);
+    a->max_tokens = DEFAULT_MAX_TOKENS;
+    a->error_stream = stderr;
+    a->output_steam = stdout;
+
+    return a;
+}
+
+void complete_inference (void *context, const Conversation *conv, InferenceResponse *out) {
+    if (NULL == context) {
+        // TODO: error somehow
+        return;
+    }
+    AnthropicContext *anthropic_ctx = context;
+    
+    AnthropicMessage *anthropic_messages = agent_messages_to_anthropic_messages(conv);
+    if (NULL == anthropic_messages) {
+        // TODO: error somehow
+        return;
+    }
+
+    AnthropicResponse *resp = run_inference(anthropic_ctx->api_key, anthropic_ctx->model, anthropic_ctx->max_tokens, anthropic_messages, conv->message_count, stdout);
+
+    if (NULL == resp) {
+        // TODO: error somehow
+        return;
+    }
+
+    out->text = strdup(resp->content->text);
+    out->stop_reason = strdup(resp->stop_reason);
+    // todo: figure out tool calls.
+}
+
+
+void destroy_anthropic_context (void *context) {
+    if (NULL == context) {
+        // TODO: is it chill of me to assume stderr?
+        fprintf(stderr, "null context passed to destroy function\n");
+        return;
+    }
+    AnthropicContext *c = context;
+    free(c->api_key);
+    free(c->model);
+    free(c->api_version);
+    free(c->api_url);
+    free(c->url_path);
+    free(c);
+}
+

@@ -14,7 +14,7 @@ void test_serialize_request_body_single_message(void) {
   char *expected = "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": [{ \"role\": \"user\", \"content\": \"Hello, Claude\" }]}";
 
   AnthropicMessage message = {
-    .role = ROLE_USER,
+    .role = ANTHROPIC_ROLE_USER,
     .content = "Hello, Claude"
   };
 
@@ -42,19 +42,19 @@ void test_serialize_request_body_multiple_messages(void) {
 
   AnthropicMessage message[4] = {
     {
-      .role = ROLE_SYSTEM,
+      .role = ANTHROPIC_ROLE_SYSTEM,
       .content = "Only respond in weird grunts"
     },
     {
-      .role = ROLE_USER,
+      .role = ANTHROPIC_ROLE_USER,
       .content = "Hello, Claude"
     },
     {
-      .role = ROLE_ASSISTANT,
+      .role = ANTHROPIC_ROLE_ASSISTANT,
       .content = "Hrrrmph! Gwaah-krrr! Blorg-flargh!"
     },
     {
-      .role = ROLE_USER,
+      .role = ANTHROPIC_ROLE_USER,
       .content = "Uuhhhhhh..."
     }
   };
