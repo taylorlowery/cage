@@ -23,6 +23,7 @@ typedef struct {
 typedef struct {
   char *text;
   char *stop_reason;
+  char *error_message;
   char **tool_calls;
   size_t tool_call_count;
 } InferenceResponse;

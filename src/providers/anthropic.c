@@ -448,20 +448,24 @@ void anthropic_complete_inference (void *context, const Conversation *conv, Infe
     AnthropicResponse *resp = anthropic_run_inference(anthropic_ctx->api_key, anthropic_ctx->model, anthropic_ctx->max_tokens, anthropic_messages, conv->message_count, stdout);
 
     if (NULL == resp) {
-        // TODO: error somehow
+        out->error_message = "anthropic_run_inference returned NULL";
         return;
     }
 
     if (0 == strcmp("error", resp->type)) {
         if (NULL == resp->error) {
-            fprintf(stderr, "ERROR WAS NULL?!\n");
+            out->error_message = "anthropic response indicated error type but parsed error was null";
             free_anthropic_response(resp);
             return;
         }
 
-        fprintf(stderr, "%s: %s\n", resp->error->type, resp->error->message);
-        free_anthropic_response(resp);
-        return;
+        // set the out->error message to a single string combining the anthropic error fields.
+        size_t len = snprintf(NULL, 0, "%s: %s", resp->error->type, resp->error->message);
+        char *buf = calloc(len + 1, sizeof(char));
+        if (NULL != buf) {
+            snprintf(buf, len + 1, "%s: %s", resp->error->type, resp->error->message);
+            out->error_message = buf;
+        }
     }
 
     if (NULL != resp->content && resp->content_count > 0) {
@@ -470,7 +474,9 @@ void anthropic_complete_inference (void *context, const Conversation *conv, Infe
     out->stop_reason = resp->stop_reason ? strdup(resp->stop_reason) : NULL;
 
     free_anthropic_response(resp);
-    // todo: figure out tool calls (need to see a tool call response)
+
+    // TODO: figure out tool calls (need to see a tool call response)
+    // we also haven't created types for passing tool schemas to API yet.
 }
 
 
