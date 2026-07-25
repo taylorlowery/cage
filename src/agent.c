@@ -84,22 +84,37 @@ void run(Agent *agent) {
           fprintf(stderr, "failed to allocate response object");
           continue;
         }
-        char *user_message = "write me a short rap song with thinly veiled innuendo using cookie butter as the central image";
+
+        // get user message and add to conversation
+        // TODO: actually gather user input. 
+        char *user_message = "This is a placeholder for user input. Return a haiku in the style of a samurai death poem.";
+
         add_message_to_conv(agent->conversation, user_message, USER);
-        agent->client->complete_inference(agent->client, agent->conversation, resp);
+
+        // send user message to LLM provider
+        agent->client->complete_inference(
+            agent->client->provider_context,
+            agent->conversation,
+            resp
+        );
         if (NULL != resp->error_message) {
             fprintf(agent->error_stream, "%s", resp->error_message);
-            free(user_message);
+            // free(user_message);
             free(resp);
             continue;
         }
+
+        // <tool use>
         
         // add response to conversation
         add_message_to_conv(agent->conversation, resp->text, ASSISTANT);
-        print_agent_message(agent, resp->text);
-        // <tool use>
         // print response
-        free(user_message);
+        print_agent_message(agent, resp->text);
+
+        // free(user_message);
         free(resp);
+
+        // while testing, break loop
+        break;
     }
 }

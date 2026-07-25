@@ -110,9 +110,10 @@ void free_anthropic_response(AnthropicResponse *resp) {
     if (NULL != resp->error) {
         free(resp->error->message);
         free(resp->error->type);
-        free(resp);
     }
-    free(resp->content);
+    if (NULL != resp->content) {
+        free(resp->content);
+    }
     free(resp);
 }
 
@@ -493,27 +494,4 @@ void free_anthropic_context (void *context) {
     free(c->api_url);
     free(c->url_path);
     free(c);
-}
-
-// TODO: remove this function, which exists to easily test
-// preparing messages and pass them to run_inference()
-void Run(void) {
-    AnthropicContext *ctx = create_anthropic_context(NULL, NULL);
-    Message messages[1] = {
-        {
-            .role = USER,
-            .message = "Howdy!"
-        }
-    };
-    Conversation conv = {
-        .messages = messages,
-        .message_capacity = 1,
-        .message_count = 1,
-    };
-
-    InferenceResponse *resp = calloc(1, sizeof(InferenceResponse));
-
-    anthropic_complete_inference(ctx, &conv, resp);
-
-    fprintf(stdout, "Claude replies: %s\n", resp->text);
 }
