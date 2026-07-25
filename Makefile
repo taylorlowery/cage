@@ -1,7 +1,7 @@
 -include .env
 export
 
-CC = zig cc
+CC = clang
 OPENSSL_CFLAGS := $(shell pkg-config --cflags openssl)
 OPENSSL_LDFLAGS := $(shell pkg-config --libs openssl)
 CFLAGS = -Wall -Wextra -Wpedantic -Iinclude -Itest/vendor/unity $(OPENSSL_CFLAGS)
@@ -9,7 +9,8 @@ LDFLAGS = $(OPENSSL_LDFLAGS)
 OUT = cage
 
 SRC_FILES = src/agent.c \
-			src/anthropic.c \
+			src/provider.c \
+			src/providers/anthropic.c \
 			src/http_client.c \
 			src/json/lexer.c \
 			src/json/parser.c

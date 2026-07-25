@@ -14,7 +14,7 @@ void test_serialize_request_body_single_message(void) {
   char *expected = "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": [{ \"role\": \"user\", \"content\": \"Hello, Claude\" }]}";
 
   AnthropicMessage message = {
-    .role = ROLE_USER,
+    .role = ANTHROPIC_ROLE_USER,
     .content = "Hello, Claude"
   };
 
@@ -29,7 +29,7 @@ void test_serialize_request_body_single_message(void) {
     .tool_count = 0,
   };
 
-  size_t cursor = serialize_request_body(buf, 8192, &request);
+  size_t cursor = serialize_anthropic_request(buf, 8192, &request);
   buf[cursor] = '\0';
   TEST_ASSERT_EQUAL_STRING(expected, buf);
 }
@@ -42,19 +42,19 @@ void test_serialize_request_body_multiple_messages(void) {
 
   AnthropicMessage message[4] = {
     {
-      .role = ROLE_SYSTEM,
+      .role = ANTHROPIC_ROLE_SYSTEM,
       .content = "Only respond in weird grunts"
     },
     {
-      .role = ROLE_USER,
+      .role = ANTHROPIC_ROLE_USER,
       .content = "Hello, Claude"
     },
     {
-      .role = ROLE_ASSISTANT,
+      .role = ANTHROPIC_ROLE_ASSISTANT,
       .content = "Hrrrmph! Gwaah-krrr! Blorg-flargh!"
     },
     {
-      .role = ROLE_USER,
+      .role = ANTHROPIC_ROLE_USER,
       .content = "Uuhhhhhh..."
     }
   };
@@ -70,7 +70,7 @@ void test_serialize_request_body_multiple_messages(void) {
     .tool_count = 0,
   };
 
-  size_t cursor = serialize_request_body(buf, 8192, &request);
+  size_t cursor = serialize_anthropic_request(buf, 8192, &request);
   buf[cursor] = '\0';
   TEST_ASSERT_EQUAL_STRING(expected, buf);
 }
@@ -85,7 +85,7 @@ void test_deserialize_json(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_OBJECT, json_parsed->type, "parsed value is not a JSON object");
     TEST_ASSERT_EQUAL_INT_MESSAGE(9, json_parsed->as.object->count, "expected 9 top-level fields");
 
-    AnthropicResponse *resp = deserialize_response(json_parsed);
+    AnthropicResponse *resp = deserialize_anthropic_response(json_parsed, stderr);
     TEST_ASSERT_NOT_NULL_MESSAGE(resp, "deserialize_response returned NULL");
     TEST_ASSERT_EQUAL_STRING("msg_01Awgi17AdAU3HWie4bCDfQ7", resp->id);
     TEST_ASSERT_EQUAL_STRING("message", resp->type);
@@ -109,18 +109,11 @@ void test_deserialize_json(void) {
     free_json_value(json_parsed);
 }
 
-void test_run(void) {
-  Run();
-}
-
-
 int main(void) {
     UNITY_BEGIN();
-
     RUN_TEST(test_serialize_request_body_single_message);
     RUN_TEST(test_serialize_request_body_multiple_messages);
     RUN_TEST(test_deserialize_json);
-    RUN_TEST(test_run);
     UNITY_END();
     return 0;
 }

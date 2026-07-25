@@ -526,8 +526,6 @@ static Connection *http_connect(const char *host, const char *port, FILE *output
             continue;
         }
 
-        fprintf(output_stream, "Attempting connection to %s...\n", s);
-
         if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             perror("client: connect");
             close(sockfd);
@@ -546,7 +544,6 @@ static Connection *http_connect(const char *host, const char *port, FILE *output
         return NULL;
     }
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof(s));
-    fprintf(output_stream, "Connected to %s!\n", s);
 
     freeaddrinfo(servinfo);
 
