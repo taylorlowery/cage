@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <assert.h>
 
-
 void init_scanner(Scanner *scanner, const char *source) {
     assert(NULL != scanner);
     assert(NULL != source);
@@ -65,20 +64,20 @@ static void skip_whitespace(Scanner *scanner) {
     for (;;) {
         char c = peek(scanner);
         switch (c) {
-            case ' ':
-            case '\r':
-            case '\t':
-            case '\n':
-                advance(scanner);
-                break;
-            default:
-                return;
+        case ' ':
+        case '\r':
+        case '\t':
+        case '\n':
+            advance(scanner);
+            break;
+        default:
+            return;
         }
     }
 }
 
 static Token string(Scanner *scanner) {
-    while(peek(scanner) != '"' && !is_at_end(scanner)) {
+    while (peek(scanner) != '"' && !is_at_end(scanner)) {
         // if the next character is a backslash,
         // skip it
         if (peek(scanner) == '\\') {
@@ -123,8 +122,10 @@ static Token number(Scanner *scanner) {
 // checkKeyword validates that the next several characters of
 // string input match those expected for a given keyword. If they
 // do, returns the token type that represents the keyword.
-static TokenType check_keyword(Scanner *scanner, const int start, const int length, const char *rest, const TokenType tokenType) {
-    if ((scanner->current - scanner->start == start + length) && (memcmp(scanner->start + start, rest, length) == 0)) {
+static TokenType check_keyword(Scanner *scanner, const int start, const int length,
+                               const char *rest, const TokenType tokenType) {
+    if ((scanner->current - scanner->start == start + length) &&
+        (memcmp(scanner->start + start, rest, length) == 0)) {
         return tokenType;
     }
     return TOKEN_ERROR;
@@ -134,22 +135,23 @@ static TokenType keyword(Scanner *scanner) {
     while (is_alpha(peek(scanner))) {
         advance(scanner);
     }
-    switch(scanner->start[0]) {
-        case 't':
-            return check_keyword(scanner, 1, 3, "rue", TOKEN_TRUE);
-        case 'f':
-            return check_keyword(scanner, 1, 4, "alse", TOKEN_FALSE);
-        case 'n':
-            return check_keyword(scanner, 1, 3, "ull", TOKEN_NULL);
-        default:
-            return TOKEN_ERROR;
+    switch (scanner->start[0]) {
+    case 't':
+        return check_keyword(scanner, 1, 3, "rue", TOKEN_TRUE);
+    case 'f':
+        return check_keyword(scanner, 1, 4, "alse", TOKEN_FALSE);
+    case 'n':
+        return check_keyword(scanner, 1, 3, "ull", TOKEN_NULL);
+    default:
+        return TOKEN_ERROR;
     }
 }
 
 Token scan_token(Scanner *scanner) {
     skip_whitespace(scanner);
     scanner->start = scanner->current;
-    if(is_at_end(scanner)) return make_token(scanner, TOKEN_EOF);
+    if (is_at_end(scanner))
+        return make_token(scanner, TOKEN_EOF);
 
     char c = advance(scanner);
     if (is_alpha(c)) {
@@ -163,18 +165,25 @@ Token scan_token(Scanner *scanner) {
         return number(scanner);
     }
     switch (c) {
-        case '[': return make_token(scanner, TOKEN_LEFTBRACKET);
-        case ']': return make_token(scanner, TOKEN_RIGHTBRACKET);
-        case '{': return make_token(scanner, TOKEN_LEFTBRACE);
-        case '}': return make_token(scanner, TOKEN_RIGHTBRACE);
-        case ',': return make_token(scanner, TOKEN_COMMA);
-        case ':': return make_token(scanner, TOKEN_COLON);
-        case '"': return string(scanner);
-        case '-':
-            if (is_digit(peek(scanner))) {
-                return number(scanner);
-            }
-            return error_token("expected digit after '-'");
+    case '[':
+        return make_token(scanner, TOKEN_LEFTBRACKET);
+    case ']':
+        return make_token(scanner, TOKEN_RIGHTBRACKET);
+    case '{':
+        return make_token(scanner, TOKEN_LEFTBRACE);
+    case '}':
+        return make_token(scanner, TOKEN_RIGHTBRACE);
+    case ',':
+        return make_token(scanner, TOKEN_COMMA);
+    case ':':
+        return make_token(scanner, TOKEN_COLON);
+    case '"':
+        return string(scanner);
+    case '-':
+        if (is_digit(peek(scanner))) {
+            return number(scanner);
+        }
+        return error_token("expected digit after '-'");
     }
 
     return error_token("unexpected character");

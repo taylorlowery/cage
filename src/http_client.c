@@ -1,6 +1,6 @@
 /*
-* Yes, I'm aware that libcurl would have made this a lot easier.
-*/
+ * Yes, I'm aware that libcurl would have made this a lot easier.
+ */
 #include "http_client.h"
 #include <ctype.h>
 #include <errno.h>
@@ -56,7 +56,6 @@ void free_http_response(HTTPResponse *http_response) {
     free(http_response);
 }
 
-
 // conn_write writes from a buffer to an http or https connection.
 // if the SSL pointer on the connection is not NULL, defaults to https,
 // and falls through to http otherwise,
@@ -71,7 +70,6 @@ static ssize_t conn_write(const Connection *conn, const char *buf, size_t buf_le
     }
     return send(conn->sockfd, buf, buf_len, 0);
 }
-
 
 // conn_read reads from a connection into a provided buffer.
 // If the connection's SSL pointer is not NULL, defaults to https,
@@ -92,13 +90,13 @@ static ssize_t conn_read(const Connection *conn, char *buf, size_t buf_len) {
 // and returns the appropriate string for use in an HTTP request.
 const char *http_method_to_str(HttpMethod http_method) {
     switch (http_method) {
-        case HTTP_GET:
-            return "GET";
-        case HTTP_POST:
-            return "POST";
-        // TODO: handle other http methods
-        default:
-            return NULL;
+    case HTTP_GET:
+        return "GET";
+    case HTTP_POST:
+        return "POST";
+    // TODO: handle other http methods
+    default:
+        return NULL;
     }
 }
 
@@ -106,9 +104,9 @@ const char *http_method_to_str(HttpMethod http_method) {
 // with the IP address of the given sockaddr struct.
 void *get_in_addr(struct sockaddr *sa) {
     if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
+        return &(((struct sockaddr_in *)sa)->sin_addr);
     }
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+    return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
 
 // parse the HTTP status code from a raw http response body
@@ -130,30 +128,24 @@ int get_status_code_from_response_body(const char *http_resp_raw) {
 
 // build_headers builds the headers for an HTTP Request.
 // extra-headers should include content-type
-static int build_headers(char *header_buf, size_t buf_size, const char *path, const HttpMethod http_method, const char *host, const size_t content_length, const HttpHeader *extra_headers, const size_t extra_headers_count) {
+static int build_headers(char *header_buf, size_t buf_size, const char *path,
+                         const HttpMethod http_method, const char *host,
+                         const size_t content_length, const HttpHeader *extra_headers,
+                         const size_t extra_headers_count) {
     const char *method_str = http_method_to_str(http_method);
     if (NULL == method_str) {
         return -1;
     }
     const char *path_str = (NULL == path || strlen(path) == 0) ? "/" : path;
-    int cursor = snprintf(
-        header_buf,
-        buf_size,
-        "%s %s HTTP/1.1\r\n"
-        "Host: %s\r\n"
-        "Connection: close\r\n",
-        method_str,
-        path_str,
-        host
-    );
+    int cursor = snprintf(header_buf, buf_size,
+                          "%s %s HTTP/1.1\r\n"
+                          "Host: %s\r\n"
+                          "Connection: close\r\n",
+                          method_str, path_str, host);
 
     if (0 < content_length) {
-        cursor += snprintf(
-            header_buf + cursor,
-            buf_size - cursor,
-            "Content-Length: %zu\r\n",
-            content_length
-        );
+        cursor += snprintf(header_buf + cursor, buf_size - cursor, "Content-Length: %zu\r\n",
+                           content_length);
     }
 
     if (NULL != extra_headers && 0 < extra_headers_count) {
@@ -161,13 +153,8 @@ static int build_headers(char *header_buf, size_t buf_size, const char *path, co
             // TODO: check if we need to resize
 
             // add each header to headers
-            cursor += snprintf(
-                header_buf + cursor,
-                buf_size - cursor,
-                "%s: %s\r\n",
-                extra_headers[i].key,
-                extra_headers[i].value
-            );
+            cursor += snprintf(header_buf + cursor, buf_size - cursor, "%s: %s\r\n",
+                               extra_headers[i].key, extra_headers[i].value);
         }
     }
 
@@ -177,7 +164,7 @@ static int build_headers(char *header_buf, size_t buf_size, const char *path, co
 
 // send_all sends a string buffer to a socket,
 // returning -1 on error and 0 on success.
-static ssize_t send_all(const Connection *conn, const char *buf, const size_t buf_len){
+static ssize_t send_all(const Connection *conn, const char *buf, const size_t buf_len) {
     size_t remaining_bytes = buf_len;
     ssize_t n = 0;
     ssize_t total_bytes_sent = 0;
@@ -196,7 +183,8 @@ static ssize_t send_all(const Connection *conn, const char *buf, const size_t bu
 static ssize_t recv_all(const Connection *conn, char **recv_buffer, size_t *buf_capacity) {
     ssize_t total_bytes_received = 0;
     ssize_t bytes_received = 0;
-    while ((bytes_received = conn_read(conn, *recv_buffer + total_bytes_received, *buf_capacity - total_bytes_received - 1)) > 0) {
+    while ((bytes_received = conn_read(conn, *recv_buffer + total_bytes_received,
+                                       *buf_capacity - total_bytes_received - 1)) > 0) {
         total_bytes_received += bytes_received;
         // if necessary, resize buffer
         if ((size_t)total_bytes_received >= *buf_capacity - 1) {
@@ -220,7 +208,8 @@ static ssize_t recv_all(const Connection *conn, char **recv_buffer, size_t *buf_
 
 // parse headers from a raw http response and add them to
 // an HTTPResponse struct.
-static int parse_headers(HTTPResponse *http_response, const char *raw_response_buffer, FILE *error_stream) {
+static int parse_headers(HTTPResponse *http_response, const char *raw_response_buffer,
+                         FILE *error_stream) {
     // skip status line?
     const char *line = strstr(raw_response_buffer, "\r\n");
     if (NULL == line) {
@@ -256,7 +245,8 @@ static int parse_headers(HTTPResponse *http_response, const char *raw_response_b
         const char *colon = memchr(line, ':', line_end - line);
         // if no colon was found, continue to the next header
         if (colon == NULL) {
-            fprintf(error_stream, "unable to find colon in header: \"%.*s\"\n", (int)(line_end - line), line);
+            fprintf(error_stream, "unable to find colon in header: \"%.*s\"\n",
+                    (int)(line_end - line), line);
             line = line_end + 2;
             continue;
         }
@@ -264,7 +254,8 @@ static int parse_headers(HTTPResponse *http_response, const char *raw_response_b
         // if I have reached header capacity, increase and realloc
         if (http_response->header_count == http_response->header_capacity) {
             http_response->header_capacity *= 2;
-            HttpHeader *temp = realloc(http_response->headers, http_response->header_capacity * sizeof(HttpHeader));
+            HttpHeader *temp = realloc(http_response->headers,
+                                       http_response->header_capacity * sizeof(HttpHeader));
             if (NULL == temp) {
                 return -1;
             }
@@ -326,7 +317,8 @@ static const char *get_response_header(const HTTPResponse *resp, const char *key
 }
 
 // body_start should point to the body portion of the raw header response, after the headers.
-static int parse_chunked_body(HTTPResponse *resp, char *body_start, size_t raw_body_len, FILE *error_stream){
+static int parse_chunked_body(HTTPResponse *resp, char *body_start, size_t raw_body_len,
+                              FILE *error_stream) {
 
     size_t total_body_bytes = 0;
     // first pass through:
@@ -346,9 +338,9 @@ static int parse_chunked_body(HTTPResponse *resp, char *body_start, size_t raw_b
             // doesn't dump the whole response.
             const char *crlf = memchr(line, '\r', (size_t)(body_end - line));
             size_t snippet = crlf ? (size_t)(crlf - line) : (size_t)(body_end - line);
-            if (snippet > 64) snippet = 64;
-            fprintf(error_stream,
-                    "chunk-size line at offset %zu has no hex digits: \"%.*s\"\n",
+            if (snippet > 64)
+                snippet = 64;
+            fprintf(error_stream, "chunk-size line at offset %zu has no hex digits: \"%.*s\"\n",
                     (size_t)(line - body_start), (int)snippet, line);
             return -1;
         }
@@ -357,7 +349,8 @@ static int parse_chunked_body(HTTPResponse *resp, char *body_start, size_t raw_b
         // later skip past them).
         if ('\r' != *line_end || '\n' != *(line_end + 1)) {
             size_t snippet = (size_t)(line_end + 2 - line);
-            if (snippet > 64) snippet = 64;
+            if (snippet > 64)
+                snippet = 64;
             fprintf(error_stream,
                     "chunk-size line at offset %zu not terminated by \\r\\n: \"%.*s\"\n",
                     (size_t)(line - body_start), (int)snippet, line);
@@ -374,7 +367,6 @@ static int parse_chunked_body(HTTPResponse *resp, char *body_start, size_t raw_b
             return -1;
         }
     }
-
 
     // if the body had no length,
     // just return.
@@ -401,7 +393,7 @@ static int parse_chunked_body(HTTPResponse *resp, char *body_start, size_t raw_b
         if (0 == chunk_size) {
             break;
         }
-        //memcpy chars between line and line_end to body_buffer
+        // memcpy chars between line and line_end to body_buffer
         memcpy(body_buffer + offset, line_end + 2, chunk_size);
         offset += chunk_size;
         // advance past next hex line
@@ -413,7 +405,6 @@ static int parse_chunked_body(HTTPResponse *resp, char *body_start, size_t raw_b
         }
     }
 
-
     body_buffer[total_body_bytes] = '\0';
 
     // set the resp body to the buffer
@@ -424,7 +415,8 @@ static int parse_chunked_body(HTTPResponse *resp, char *body_start, size_t raw_b
 }
 
 // parse a raw http response to an HTTPResponse struct.
-HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buffer, FILE *error_stream) {
+HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buffer,
+                                                   FILE *error_stream) {
     HTTPResponse *http_response = calloc(1, sizeof(HTTPResponse));
     if (NULL == http_response) {
         perror("calloc HTTPResponse");
@@ -476,13 +468,13 @@ HTTPResponse *parse_response_body_to_http_response(const char *raw_response_buff
         return NULL;
     }
 
-
     return http_response;
 }
 
 // http connect attempts to connect to a socket and returns its socket fd,
 // or returns -1 on error.
-static Connection *http_connect(const char *host, const char *port, FILE *output_stream, FILE *error_stream) {
+static Connection *http_connect(const char *host, const char *port, FILE *output_stream,
+                                FILE *error_stream) {
     int sockfd = -1;
     struct addrinfo hints;
     struct addrinfo *servinfo = NULL;
@@ -509,12 +501,8 @@ static Connection *http_connect(const char *host, const char *port, FILE *output
             continue;
         }
 
-        const char *addr_str = inet_ntop(
-            p->ai_family,
-            get_in_addr((struct sockaddr *)p->ai_addr),
-            s,
-            sizeof(s)
-        );
+        const char *addr_str =
+            inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof(s));
 
         // addr_str should never be NULL because by this point
         // we have successfully retrieved the address with `getaddrinfo()`.
@@ -560,11 +548,14 @@ static Connection *http_connect(const char *host, const char *port, FILE *output
     return conn;
 }
 
-ssize_t http_send(Connection *conn, const HttpMethod http_method, const char *path, const char *host, const HttpHeader *extra_headers, size_t extra_headers_count, const char *body, FILE *error_stream) {
+ssize_t http_send(Connection *conn, const HttpMethod http_method, const char *path,
+                  const char *host, const HttpHeader *extra_headers, size_t extra_headers_count,
+                  const char *body, FILE *error_stream) {
     ssize_t total_bytes_sent = 0;
     size_t body_len = (NULL != body) ? strlen(body) : 0;
     char header_buf[DEFAULT_BUFFER_SIZE];
-    int success_code = build_headers(header_buf, DEFAULT_BUFFER_SIZE, path, http_method, host, body_len, extra_headers, extra_headers_count);
+    int success_code = build_headers(header_buf, DEFAULT_BUFFER_SIZE, path, http_method, host,
+                                     body_len, extra_headers, extra_headers_count);
     if (0 != success_code) {
         fprintf(error_stream, "build_headers\n");
         return -1;
@@ -616,7 +607,10 @@ HTTPResponse *http_receive(Connection *conn, FILE *error_stream) {
 // post() sends a POST request to a given host (eg, "http://example.com"),
 // and returns a pointer to a response object.
 // The caller is responsible for freeing the response.
-HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const HttpHeader *extra_headers, const size_t extra_headers_count, const char* body, FILE *output_stream, FILE *error_stream){
+HTTPResponse *http_request(const HttpMethod http_method, const char *host, const char *port,
+                           const char *path, const HttpHeader *extra_headers,
+                           const size_t extra_headers_count, const char *body, FILE *output_stream,
+                           FILE *error_stream) {
     // connect
     Connection *conn = http_connect(host, port, output_stream, error_stream);
     if (NULL == conn || -1 == conn->sockfd) {
@@ -625,7 +619,8 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     }
 
     // send
-    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, extra_headers, extra_headers_count, body, error_stream);
+    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, extra_headers,
+                                         extra_headers_count, body, error_stream);
     if (-1 == total_bytes_sent) {
         free_connection(conn);
         return NULL;
@@ -638,11 +633,10 @@ HTTPResponse *http_request(const HttpMethod http_method, const char *host, const
     return resp;
 }
 
-
 SSL_CTX *create_ssl_ctx(FILE *error_stream) {
 
     SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
-    if (NULL == ctx){
+    if (NULL == ctx) {
         fprintf(error_stream, "Failed to create SSL context.\n");
         return NULL;
     }
@@ -665,11 +659,11 @@ SSL_CTX *create_ssl_ctx(FILE *error_stream) {
     return ctx;
 }
 
-
 // ssl_connect is a WIP.
 // Currently in placeholder mode while I get other stuff sorted.
 // Caller has to free the connection.
-static Connection *ssl_connect(const char* host, const char *port, FILE *output_stream, FILE *error_stream) {
+static Connection *ssl_connect(const char *host, const char *port, FILE *output_stream,
+                               FILE *error_stream) {
 
     SSL_CTX *ctx = create_ssl_ctx(error_stream);
     if (NULL == ctx) {
@@ -707,7 +701,9 @@ static Connection *ssl_connect(const char* host, const char *port, FILE *output_
     return conn;
 }
 
-HTTPResponse *https_request(const HttpMethod http_method, const char *host, const char *port, const char *path, const HttpHeader *headers, const size_t header_count, const char* body, FILE *output_stream, FILE *error_stream) {
+HTTPResponse *https_request(const HttpMethod http_method, const char *host, const char *port,
+                            const char *path, const HttpHeader *headers, const size_t header_count,
+                            const char *body, FILE *output_stream, FILE *error_stream) {
     // connect
     Connection *conn = ssl_connect(host, port, output_stream, error_stream);
     if (NULL == conn || NULL == conn->ssl) {
@@ -716,7 +712,8 @@ HTTPResponse *https_request(const HttpMethod http_method, const char *host, cons
     }
 
     // send
-    ssize_t total_bytes_sent = http_send(conn, http_method, path, host, headers, header_count, body, error_stream);
+    ssize_t total_bytes_sent =
+        http_send(conn, http_method, path, host, headers, header_count, body, error_stream);
     if (-1 == total_bytes_sent) {
         free_connection(conn);
         return NULL;

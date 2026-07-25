@@ -5,7 +5,7 @@
 #include "http_client.h"
 #include "provider.h"
 
-typedef enum AnthropicMessageRole{
+typedef enum AnthropicMessageRole {
     ANTHROPIC_ROLE_SYSTEM,
     ANTHROPIC_ROLE_USER,
     ANTHROPIC_ROLE_ASSISTANT,
@@ -73,12 +73,14 @@ typedef struct {
 } AnthropicContext;
 
 AnthropicContext *create_anthropic_context(char *api_key, char *model);
-void free_anthropic_context (void *context);
+void free_anthropic_context(void *context);
 
 size_t serialize_anthropic_request(char *body_buf, size_t buffer_len, AnthropicRequest *request);
 AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_stream);
 
-AnthropicResponse *anthropic_run_inference(char *api_key, char *model, int max_tokens, AnthropicMessage *messages, int message_count, FILE *error_stream);
+AnthropicResponse *anthropic_run_inference(char *api_key, char *model, int max_tokens,
+                                           AnthropicMessage *messages, int message_count,
+                                           FILE *error_stream);
 
 // fulfills contract for provider-agnostic agent
 void anthropic_complete_inference(void *context, const Conversation *conv, InferenceResponse *out);
