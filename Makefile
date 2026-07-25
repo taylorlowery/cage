@@ -38,7 +38,7 @@ $(TEST_BINS): test_%: test/test_%.c $(TEST_COMMON_SRC)
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)
 
-.PHONY: build_tests test clean test_valgrind
+.PHONY: build_tests test clean test_valgrind format
 
 # Build all test binaries
 build_tests: $(TEST_BINS)
@@ -50,9 +50,12 @@ test: build_tests
 clean:
 	rm -f $(OUT) $(TEST_BINS)
 
+format:
+	clang-format -i main.c $(SRC_FILES) include/*.h test/*.c
+
 # valgrind has some trouble with the zig compiler,
 # so I recommend running build_tests first,
 # overriding the CC variable with `clang`:
 # `make clean && make build_tests CC=clang`
 test_valgrind: build_tests
-	@for t in  $(TEST_BINS); do $(VALGRIND) ./$$t || exit 1; done 
+	@for t in  $(TEST_BINS); do $(VALGRIND) ./$$t || exit 1; done
