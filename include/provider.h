@@ -2,6 +2,9 @@
 #define PROVIDER_H
 
 #include <stdlib.h>
+#include <stdio.h>
+
+#define DEFAULT_CONVERSATION_LEN 8
 
 typedef enum {
   SYSTEM,
@@ -37,5 +40,13 @@ typedef struct {
     // provider-specific context should provide a function for safely de-allocating
     void (*destroy_provider_context)(void *context);
 } InferenceProvider;
+
+// returns the allocated size of the conversation if successful,
+// -1 on failure.
+int resize_conversation(Conversation *conv);
+
+void free_conversation(Conversation *conv);
+
+void add_message_to_conv(Conversation *conv, char *message, MessageRole role);
 
 #endif
