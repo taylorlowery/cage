@@ -111,7 +111,6 @@ void test_deserialize_json(void) {
 
 int main(void) {
     UNITY_BEGIN();
-
     RUN_TEST(test_serialize_request_body_single_message);
     RUN_TEST(test_serialize_request_body_multiple_messages);
     RUN_TEST(test_deserialize_json);

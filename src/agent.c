@@ -2,6 +2,7 @@
 #include "provider.h"
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #define DEFAULT_AGENT_NAME "Cage"
 #define ANSI_USER_STYLE "\033[1;36m"
@@ -57,10 +58,12 @@ cleanup:
 void print_agent_message(Agent *agent, char *message) {
     fprintf(agent->output_stream, "%s%s:%s %s\n", ANSI_AGENT_STYLE, agent->display_name, ANSI_CLEAR_STYLE, message);
 }
+
 void print_user_message(Agent *agent, char *message) {
-    fprintf(agent->output_stream, "%sYou:%s %s\n", ANSI_USER_STYLE, ANSI_CLEAR_STYLE, message);
-    
+    fprintf(agent->output_stream, "%sYou:%s %s\n", ANSI_USER_STYLE, ANSI_CLEAR_STYLE, message);    
 }
+
+
 
 void run(Agent *agent) {
     if (NULL == agent) {
@@ -82,14 +85,22 @@ void run(Agent *agent) {
         InferenceResponse *resp = calloc(1, sizeof(InferenceResponse));
         if (NULL == resp) {
           fprintf(stderr, "failed to allocate response object");
-          continue;
+          break;
         }
 
         // get user message and add to conversation
-        // TODO: actually gather user input. 
-        char *user_message = "This is a placeholder for user input. Return a haiku in the style of a samurai death poem.";
+        char user_message_buf[4096];
+        fflush(agent->output_stream);
+        if (NULL == fgets(user_message_buf, sizeof(user_message_buf) - 1, agent->input_stream)) {
+            fprintf(agent->error_stream, "error getting user input");
+            break;   
+        }
+        size_t user_message_len = strlen(user_message_buf);
+        if (user_message_len > 0 && user_message_buf[user_message_len - 1] == '\n') {
+            user_message_buf[user_message_len - 1] = '\0';
+        }
 
-        add_message_to_conv(agent->conversation, user_message, USER);
+        add_message_to_conv(agent->conversation, user_message_buf, USER);
 
         // send user message to LLM provider
         agent->client->complete_inference(
@@ -101,7 +112,7 @@ void run(Agent *agent) {
             fprintf(agent->error_stream, "%s", resp->error_message);
             // free(user_message);
             free(resp);
-            continue;
+            break;
         }
 
         // <tool use>
@@ -111,10 +122,6 @@ void run(Agent *agent) {
         // print response
         print_agent_message(agent, resp->text);
 
-        // free(user_message);
         free(resp);
-
-        // while testing, break loop
-        break;
     }
 }
