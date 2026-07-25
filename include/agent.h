@@ -1,15 +1,22 @@
 #ifndef AGENT_H
 #define AGENT_H
 
+#include "provider.h"
 #include <stdio.h>
 
-// Just a temporary function to make sure
-// my imports, tests, and make setup.
-void greet(FILE *fp);
+typedef struct {
+  char *display_name;
+  InferenceProvider *client;
+  Conversation *conversation; 
+  FILE *input_stream;
+  FILE *output_stream;
+  FILE *error_stream;
+} Agent;
 
-// ability to support multiple models?
-// enum for providers
-// construct agent supported by functions from eg anthropic.c for provider-specific functionality?
-//
+Agent *new_agent(char *display_name, InferenceProvider *client, FILE *input_stream, FILE *output_stream, FILE *error_stream);
+
+void free_agent(Agent *agent);
+
+void run(Agent *agent);
 
 #endif
