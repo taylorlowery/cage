@@ -480,7 +480,7 @@ void anthropic_complete_inference (void *context, const Conversation *conv, Infe
 }
 
 
-void destroy_anthropic_context (void *context) {
+void free_anthropic_context (void *context) {
     if (NULL == context) {
         // TODO: is it chill of me to assume stderr?
         fprintf(stderr, "null context passed to destroy function\n");
@@ -494,7 +494,7 @@ void destroy_anthropic_context (void *context) {
     free(c->url_path);
     free(c);
 }
-//
+
 // TODO: remove this function, which exists to easily test
 // preparing messages and pass them to run_inference()
 void Run(void) {

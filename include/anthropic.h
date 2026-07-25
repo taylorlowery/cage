@@ -72,6 +72,9 @@ typedef struct {
     FILE *output_steam;
 } AnthropicContext;
 
+AnthropicContext *create_anthropic_context(char *api_key, char *model);
+void free_anthropic_context (void *context);
+
 size_t serialize_anthropic_request(char *body_buf, size_t buffer_len, AnthropicRequest *request);
 AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_stream);
 
