@@ -2,13 +2,10 @@
 #include "vendor/unity/unity.h"
 #include "vendor/unity/unity_internals.h"
 
-
 void setUp(void) {
-
 }
 
 void tearDown(void) {
-
 }
 
 void assert_token(Scanner *scanner, TokenType expected_tokentype, char *expected_value) {
@@ -175,7 +172,6 @@ void test_lexer_keyword_case_sensitive(void) {
 // TODO: empty json object {}
 //
 
-
 void test_lexer_minimal_json(void) {
     Scanner s;
     init_scanner(&s, "{\"key\": \"value\"}");
@@ -186,7 +182,6 @@ void test_lexer_minimal_json(void) {
     assert_token(&s, TOKEN_RIGHTBRACE, "}");
     assert_token(&s, TOKEN_EOF, NULL);
 }
-
 
 void test_lexer_json_list(void) {
     Scanner s;
@@ -218,7 +213,9 @@ void test_lexer_json_object_with_list(void) {
 
 void test_lexer_complex_json(void) {
     Scanner s;
-    init_scanner(&s, "{\"name\": \"test\", \"values\": [1, 2.5, -3], \"flags\": {\"a\": true, \"b\": null}}");
+    init_scanner(
+        &s,
+        "{\"name\": \"test\", \"values\": [1, 2.5, -3], \"flags\": {\"a\": true, \"b\": null}}");
     assert_token(&s, TOKEN_LEFTBRACE, "{");
     assert_token(&s, TOKEN_STRING, "\"name\"");
     assert_token(&s, TOKEN_COLON, ":");

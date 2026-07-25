@@ -2,17 +2,19 @@
 #include "vendor/unity/unity.h"
 #include "vendor/unity/unity_internals.h"
 
+void setUp(void) {
+}
 
-void setUp(void) {}
-
-void tearDown(void) {}
+void tearDown(void) {
+}
 
 void test_empty_object(void) {
     Parser p;
     init_parser(&p, "{}", stdout);
     JsonValue *v = parse_json(&p);
     TEST_ASSERT_NOT_NULL(v);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_OBJECT, v->type, "the returned value was not of the expected type");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_OBJECT, v->type,
+                                  "the returned value was not of the expected type");
     TEST_ASSERT(v->as.object->capacity == 0);
     TEST_ASSERT(v->as.object->count == 0);
     TEST_ASSERT_NULL(v->as.object->pairs);
@@ -24,7 +26,8 @@ void test_empty_array(void) {
     init_parser(&p, "[]", stdout);
     JsonValue *v = parse_json(&p);
     TEST_ASSERT_NOT_NULL(v);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_ARRAY, v->type, "the returned value was not of the expected type");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_ARRAY, v->type,
+                                  "the returned value was not of the expected type");
     TEST_ASSERT(0 == v->as.array->count);
     TEST_ASSERT(0 == v->as.array->capacity);
     TEST_ASSERT_NULL(v->as.array->items);
@@ -44,7 +47,7 @@ static void assert_parse_error(const char *input) {
 
 void test_truncated_inputs_return_null(void) {
     const char *inputs[] = {"{", "[", "\"", "nul", "tru", "fals"};
-    for (size_t i = 0; i < sizeof(inputs)/sizeof(inputs[0]); i++) {
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); i++) {
         assert_parse_error(inputs[i]);
     }
 }
@@ -60,13 +63,14 @@ static void assert_parse_success(const char *input) {
 
 void test_single_primitives(void) {
     const char *inputs[] = {"null", "true", "false", "42", "-1", "3.14", "\"hello\""};
-    for (size_t i = 0; i < sizeof(inputs)/sizeof(inputs[0]); i++) {
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); i++) {
         assert_parse_success(inputs[i]);
     }
 }
 
 void test_complex_object(void) {
-    const char *json = "{\"name\": \"test\", \"values\": [1, 2.5, -3], \"flags\": {\"a\": true, \"b\": null}}";
+    const char *json =
+        "{\"name\": \"test\", \"values\": [1, 2.5, -3], \"flags\": {\"a\": true, \"b\": null}}";
     Parser p;
     init_parser(&p, json, stdout);
     JsonValue *v = parse_json(&p);
@@ -97,7 +101,7 @@ void test_list_invalid_element_returns_null(void) {
 
 void test_non_string_key_returns_null(void) {
     const char *inputs[] = {"{42: \"value\"}", "{true: \"value\"}"};
-    for (size_t i = 0; i < sizeof(inputs)/sizeof(inputs[0]); i++) {
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); i++) {
         assert_parse_error(inputs[i]);
     }
 }
@@ -109,7 +113,6 @@ void test_list_missing_bracket_returns_null(void) {
 void test_object_missing_brace_returns_null(void) {
     assert_parse_error("{\"a\": 1");
 }
-
 
 void test_single_element_array(void) {
     const char *json = "[42]";
@@ -170,14 +173,14 @@ void test_deeply_nested(void) {
 
 void test_empty_and_whitespace_returns_null(void) {
     const char *inputs[] = {"", "   "};
-    for (size_t i = 0; i < sizeof(inputs)/sizeof(inputs[0]); i++) {
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); i++) {
         assert_parse_error(inputs[i]);
     }
 }
 
 void test_extra_data_returns_null(void) {
     const char *inputs[] = {"true false", "{} extra"};
-    for (size_t i = 0; i < sizeof(inputs)/sizeof(inputs[0]); i++) {
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); i++) {
         assert_parse_error(inputs[i]);
     }
 }
@@ -194,15 +197,15 @@ void test_json_like_string(void) {
 
 void test_anthropic_response(void) {
     const char *json = "{"
-        "\"id\": \"msg_01XFDUDYJgAACzvnptvVoYEL\","
-        "\"type\": \"message\","
-        "\"role\": \"assistant\","
-        "\"content\": [{\"type\": \"text\", \"text\": \"Hello!\"}],"
-        "\"model\": \"claude-opus-4-8\","
-        "\"stop_reason\": \"end_turn\","
-        "\"stop_sequence\": null,"
-        "\"usage\": {\"input_tokens\": 12, \"output_tokens\": 6}"
-    "}";
+                       "\"id\": \"msg_01XFDUDYJgAACzvnptvVoYEL\","
+                       "\"type\": \"message\","
+                       "\"role\": \"assistant\","
+                       "\"content\": [{\"type\": \"text\", \"text\": \"Hello!\"}],"
+                       "\"model\": \"claude-opus-4-8\","
+                       "\"stop_reason\": \"end_turn\","
+                       "\"stop_sequence\": null,"
+                       "\"usage\": {\"input_tokens\": 12, \"output_tokens\": 6}"
+                       "}";
     Parser p;
     init_parser(&p, json, stdout);
     JsonValue *v = parse_json(&p);
@@ -213,7 +216,11 @@ void test_anthropic_response(void) {
 }
 
 void test_string_keys_and_values_have_no_quotes(void) {
-    const char *json = "{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_01Awgi17AdAU3HWie4bCDfQ7\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Howdy!\"}],\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":11,\"output_tokens\":24}}";
+    const char *json =
+        "{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_01Awgi17AdAU3HWie4bCDfQ7\",\"type\":"
+        "\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Howdy!\"}],"
+        "\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{"
+        "\"input_tokens\":11,\"output_tokens\":24}}";
     Parser p;
     init_parser(&p, json, stderr);
     JsonValue *v = parse_json(&p);
@@ -225,7 +232,8 @@ void test_string_keys_and_values_have_no_quotes(void) {
     TEST_ASSERT_EQUAL_STRING("claude-haiku-4-5-20251001", v->as.object->pairs[0].value->as.string);
 
     TEST_ASSERT_EQUAL_STRING("id", v->as.object->pairs[1].key);
-    TEST_ASSERT_EQUAL_STRING("msg_01Awgi17AdAU3HWie4bCDfQ7", v->as.object->pairs[1].value->as.string);
+    TEST_ASSERT_EQUAL_STRING("msg_01Awgi17AdAU3HWie4bCDfQ7",
+                             v->as.object->pairs[1].value->as.string);
 
     TEST_ASSERT_EQUAL_STRING("type", v->as.object->pairs[2].key);
     TEST_ASSERT_EQUAL_STRING("message", v->as.object->pairs[2].value->as.string);
@@ -262,22 +270,22 @@ void test_array_with_multiple_empty_objects(void) {
     init_parser(&p, "[{},{},{}]", stdout);
     JsonValue *v = parse_json(&p);
     TEST_ASSERT_NOT_NULL(v);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_ARRAY, v->type, "the returned value was not of the expected type");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_ARRAY, v->type,
+                                  "the returned value was not of the expected type");
     TEST_ASSERT(3 == v->as.array->count);
     // 8 is the minimum allocated capacity
     TEST_ASSERT(8 == v->as.array->capacity);
     TEST_ASSERT_NOT_NULL(v->as.array->items);
     for (size_t i = 0; i < 3; i++) {
         JsonValue o = v->as.array->items[i];
-        TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_OBJECT, o.type, "the returned value was not of the expected type");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_OBJECT, o.type,
+                                      "the returned value was not of the expected type");
         TEST_ASSERT(o.as.object->capacity == 0);
         TEST_ASSERT(o.as.object->count == 0);
         TEST_ASSERT_NULL(o.as.object->pairs);
     }
     free_json_value(v);
 }
-
-
 
 int main(void) {
     UNITY_BEGIN();

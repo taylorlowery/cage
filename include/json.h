@@ -10,14 +10,15 @@
 #include <stdio.h>
 
 typedef struct {
-    const char* start;
-    const char* current;
+    const char *start;
+    const char *current;
 } Scanner;
 
-
 typedef enum {
-    TOKEN_LEFTBRACE, TOKEN_RIGHTBRACE,
-    TOKEN_LEFTBRACKET, TOKEN_RIGHTBRACKET,
+    TOKEN_LEFTBRACE,
+    TOKEN_RIGHTBRACE,
+    TOKEN_LEFTBRACKET,
+    TOKEN_RIGHTBRACKET,
     TOKEN_COMMA,
     TOKEN_COLON,
     TOKEN_STRING,
@@ -36,12 +37,12 @@ typedef struct {
 } Token;
 
 typedef struct {
-  Token current;
-  Token previous;
-  bool had_error;
-  bool panic_mode;
-  FILE *error_stream;
-  Scanner scanner;
+    Token current;
+    Token previous;
+    bool had_error;
+    bool panic_mode;
+    FILE *error_stream;
+    Scanner scanner;
 } Parser;
 
 typedef enum {
@@ -53,7 +54,6 @@ typedef enum {
     JSON_OBJECT,
 } JsonType;
 
-
 typedef struct JsonValue JsonValue;
 
 typedef struct {
@@ -63,7 +63,7 @@ typedef struct {
 } JsonArray;
 
 typedef struct {
-    char* key;
+    char *key;
     JsonValue *value;
 } JsonPair;
 
@@ -73,7 +73,7 @@ typedef struct {
     size_t capacity;
 } JsonObject;
 
-typedef struct JsonValue{
+typedef struct JsonValue {
     JsonType type;
     union {
         bool boolean;
@@ -89,6 +89,5 @@ Token scan_token(Scanner *scanner);
 void init_parser(Parser *parser, const char *source, FILE *error_stream);
 JsonValue *parse_json(Parser *parser);
 void free_json_value(JsonValue *value);
-
 
 #endif // JSON_H
