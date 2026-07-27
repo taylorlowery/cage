@@ -23,6 +23,16 @@ void free_agent(Agent *agent) {
     free(agent);
 }
 
+// calls a function for an agent with the provided args,
+// and populates a provided buffer with the results.
+// presumably needs to be a big buffer, if we're passing back whole files.
+// (i.e, an 'ls' tool).
+// instead of args as a single string, probably needs to be KV pairs?
+// JSON parser should be able to deserialize the input into KV pairs.
+void call_tool(char *tool_name, char *args, char *out) {
+
+}
+
 // allocates a new agent instance based on a given provider context.
 // caller must free.
 Agent *new_agent(char *display_name, InferenceProvider *client, FILE *input_stream,
@@ -71,6 +81,10 @@ void run(Agent *agent) {
         fprintf(stderr, "agent is null\n");
         return;
     }
+    if (NULL == agent->client) {
+        fprintf(stderr, "agent's inference provider is null\n");
+        return;
+    }
 
     // greet;
     print_agent_message(agent, "Howdy, pilgrim!");
@@ -103,7 +117,7 @@ void run(Agent *agent) {
         add_message_to_conv(agent->conversation, user_message_buf, USER);
 
         // send user message to LLM provider
-        agent->client->complete_inference(agent->client->provider_context, agent->conversation,
+        agent->client->complete_inference(agent->client->provider_context, agent->conversation, agent->tools,
                                           resp);
         if (NULL != resp->error_message) {
             fprintf(agent->error_stream, "%s", resp->error_message);
@@ -112,11 +126,39 @@ void run(Agent *agent) {
             break;
         }
 
-        // <tool use>
-
         // add response to conversation
         add_message_to_conv(agent->conversation, resp->text, ASSISTANT);
-        // print response
+
+        // call tools and send responses to LLM until all tools called
+        while (0 == strcmp(resp->stop_reason, "tool_use")) {
+            for (size_t i = 0; i < resp->tool_call_count; i++) {
+                char buf[4096];
+                call_tool(resp->tool_calls[i].tool_name, resp->tool_calls[i].tool_args, buf);
+
+                size_t buflen = strlen(buf);
+                // TODO: presumably the tool call could fill the buffer.
+                // We can consider resizing the buffer. We could just say we only support content up to this length.
+                buf[buflen] = '\0';
+
+                // add tool call result to conversation?
+                // TODO: correctly represent the tool use with its id, etc.,
+                // not just pass it as a string.
+                add_message_to_conv(agent->conversation, buf, USER);
+
+                // complete inference again with tool call result;
+                agent->client->complete_inference(agent->client->provider_context, agent->conversation, agent->tools,
+                                                resp);
+
+                if (NULL != resp->error_message) {
+                    fprintf(agent->error_stream, "%s", resp->error_message);
+                    // free(user_message);
+                    free(resp);
+                    break;
+                }
+            }
+        }
+
+        // print final response
         print_agent_message(agent, resp->text);
 
         free(resp);

@@ -6,7 +6,7 @@
 
 #define DEFAULT_CONVERSATION_LEN 8
 
-typedef enum { SYSTEM, USER, ASSISTANT } MessageRole;
+typedef enum { SYSTEM, USER, ASSISTANT, TOOL } MessageRole;
 
 typedef struct {
     MessageRole role;
@@ -20,10 +20,26 @@ typedef struct {
 } Conversation;
 
 typedef struct {
+    char *name;
+    char *description;
+    char *input_schema;
+} Tool;
+
+typedef struct {
+    Tool *tools;
+    size_t tool_count;
+} ToolSet;
+
+typedef struct {
+    char *tool_name;
+    char *tool_args;
+} ToolCall;
+
+typedef struct {
     char *text;
     char *stop_reason;
     char *error_message;
-    char **tool_calls;
+    ToolCall *tool_calls;
     size_t tool_call_count;
 } InferenceResponse;
 
@@ -32,7 +48,7 @@ typedef struct {
     void *provider_context;
     // provider-specific code should fulfill this contract to map provider-specific responses
     // to our provider-agnostic structs.
-    void (*complete_inference)(void *context, const Conversation *conv, InferenceResponse *out);
+    void (*complete_inference)(void *context, const Conversation *conv, const ToolSet *tools, InferenceResponse *out);
     // provider-specific context should provide a function for safely de-allocating
     void (*destroy_provider_context)(void *context);
 } InferenceProvider;

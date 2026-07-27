@@ -23,6 +23,11 @@ typedef struct {
 } AnthropicTool;
 
 typedef struct {
+    char *type;
+    bool disable_parallel_tool_use;
+} AnthropicToolChoice;
+
+typedef struct {
     HttpHeader *headers;
     char *model;
     size_t max_tokens;
@@ -30,12 +35,27 @@ typedef struct {
     size_t message_count;
     char *system;
     AnthropicTool *tools;
+    AnthropicToolChoice *tool_choice;
     size_t tool_count;
 } AnthropicRequest;
 
+typedef enum {
+    ANTHROPIC_CONTENT_TEXT,
+    ANTHROPIC_CONTENT_TOOL_USE,
+    ANTHROPIC_CONTENT_TOOL_RESULT,
+} AnthropicContentType;
+
 typedef struct {
-    char *type;
-    char *text;
+    AnthropicContentType type;
+    union {
+        // typical message block
+        struct { char *text; } text;
+        // a tool use call returned by assistant
+        struct { char *id; char *name; char *input; } tool_use;
+        // message block representing the result of a tool call,
+        // sent by the user back to the assistant
+        struct { char *tool_use_id; char *content; bool is_error; } tool_result;
+    } as;
 } AnthropicContent;
 
 typedef struct {
@@ -83,7 +103,7 @@ AnthropicResponse *anthropic_run_inference(char *api_key, char *model, int max_t
                                            FILE *error_stream);
 
 // fulfills contract for provider-agnostic agent
-void anthropic_complete_inference(void *context, const Conversation *conv, InferenceResponse *out);
+void anthropic_complete_inference(void *context, const Conversation *conv, const ToolSet *tools, InferenceResponse *out);
 
 void Run(void);
 

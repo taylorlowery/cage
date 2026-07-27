@@ -400,7 +400,7 @@ AnthropicContext *create_anthropic_context(char *api_key, char *model) {
     return a;
 }
 
-void anthropic_complete_inference(void *context, const Conversation *conv, InferenceResponse *out) {
+void anthropic_complete_inference(void *context, const Conversation *conv, const ToolSet *tools, InferenceResponse *out) {
     if (NULL == context) {
         // TODO: error somehow
         return;
