@@ -81,8 +81,22 @@ void free_anthropic_response(AnthropicResponse *resp) {
     free(resp->stop_sequence);
     if (NULL != resp->content) {
         for (size_t i = 0; i < resp->content_count; i++) {
-            free(resp->content[i].type);
-            free(resp->content[i].text);
+            switch (resp->content[i].type) {
+            case ANTHROPIC_CONTENT_TEXT:
+                free(resp->content[i].as.text.text);
+                break;
+            case ANTHROPIC_CONTENT_TOOL_USE:
+                free(resp->content[i].as.tool_use.id);
+                free(resp->content[i].as.tool_use.name);
+                free(resp->content[i].as.tool_use.input);
+                break;
+            case ANTHROPIC_CONTENT_TOOL_RESULT:
+                free(resp->content[i].as.tool_result.tool_use_id);
+                free(resp->content[i].as.tool_result.content);
+                break;
+            case ANTHROPIC_CONTENT_UNKNOWN:
+                break;
+            }
         }
     }
     if (NULL != resp->error) {
@@ -169,34 +183,114 @@ AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_s
                 goto cleanup;
             }
             resp->content_count = content_count;
+
             for (size_t j = 0; j < content_count; j++) {
                 JsonValue item_val = value->as.array->items[j];
                 if (item_val.type != JSON_OBJECT) {
                     continue;
                 }
-                JsonObject *msg_json = value->as.array->items[j].as.object;
+                JsonObject *msg_json = item_val.as.object;
+                AnthropicContentType block_type = ANTHROPIC_CONTENT_UNKNOWN;
                 for (size_t k = 0; k < msg_json->count; k++) {
                     JsonPair current_pair = msg_json->pairs[k];
                     if (0 == strcmp(current_pair.key, "type")) {
-                        if (current_pair.value->type == JSON_STRING &&
-                            0 != copy_string(current_pair.value->as.string, &resp->content[j].type,
-                                             "content.type", error_stream)) {
+                        if (current_pair.value->type == JSON_STRING) {
+                            if (0 == strcmp(current_pair.value->as.string, "text")) {
+                                block_type = ANTHROPIC_CONTENT_TEXT;
+                            } else if (0 == strcmp(current_pair.value->as.string, "tool_use")) {
+                                block_type = ANTHROPIC_CONTENT_TOOL_USE;
+                            } else if (0 == strcmp(current_pair.value->as.string, "tool_result")) {
+                                block_type = ANTHROPIC_CONTENT_TOOL_RESULT;
+                            } else {
+                                fprintf(error_stream, "unsupported content type: '%s'\n", current_pair.value->as.string);
+                                goto cleanup;
+                            }
+                            resp->content[j].type = block_type;
+                            continue;
+                        } else {
+                            fprintf(error_stream, "content type was not a string\n");
                             goto cleanup;
                         }
-                        continue;
                     }
-                    if (0 == strcmp(current_pair.key, "text")) {
-                        if (current_pair.value->type == JSON_STRING &&
-                            0 != copy_string(current_pair.value->as.string, &resp->content[j].text,
-                                             "content.text", error_stream)) {
+                }
+                for (size_t k = 0; k < msg_json->count; k++) {
+                    JsonPair current_pair = msg_json->pairs[k];
+                    switch (block_type) {
+                        case ANTHROPIC_CONTENT_TEXT:
+                            if (0 == strcmp(current_pair.key, "text")) {
+                                if (current_pair.value->type != JSON_STRING) {
+                                    fprintf(error_stream, "text was not a string\n");
+                                    goto cleanup;
+                                }
+                                if (0 != copy_string(current_pair.value->as.string, &resp->content[j].as.text.text,
+                                                "content.text", error_stream)) {
+                                    goto cleanup;
+                                }
+                            }
+                            break;
+                        case ANTHROPIC_CONTENT_TOOL_USE:
+                            if (0 == strcmp(current_pair.key, "id")) {
+                                if (current_pair.value->type != JSON_STRING ||
+                                    0 != copy_string(current_pair.value->as.string,
+                                                     &resp->content[j].as.tool_use.id,
+                                                     "content.tool_use.id", error_stream)) {
+                                    fprintf(error_stream, "tool_use id was not a string\\n");
+                                    goto cleanup;
+                                }
+                            } else if (0 == strcmp(current_pair.key, "name")) {
+                                if (current_pair.value->type != JSON_STRING ||
+                                    0 != copy_string(current_pair.value->as.string,
+                                                     &resp->content[j].as.tool_use.name,
+                                                     "content.tool_use.name", error_stream)) {
+                                    fprintf(error_stream, "tool_use name was not a string\\n");
+                                    goto cleanup;
+                                }
+                            } else if (0 == strcmp(current_pair.key, "input")) {
+                                if (current_pair.value->type != JSON_STRING ||
+                                    0 != copy_string(current_pair.value->as.string,
+                                                     &resp->content[j].as.tool_use.input,
+                                                     "content.tool_use.input", error_stream)) {
+                                    fprintf(error_stream,
+                                            "tool_use input must currently be a string\\n");
+                                    goto cleanup;
+                                }
+                            }
+                            break;
+                        case ANTHROPIC_CONTENT_TOOL_RESULT:
+                            if (0 == strcmp(current_pair.key, "tool_use_id")) {
+                                if (current_pair.value->type != JSON_STRING ||
+                                    0 != copy_string(current_pair.value->as.string,
+                                                     &resp->content[j].as.tool_result.tool_use_id,
+                                                     "content.tool_result.tool_use_id", error_stream)) {
+                                    fprintf(error_stream, "tool_result tool_use_id was not a string\\n");
+                                    goto cleanup;
+                                }
+                            } else if (0 == strcmp(current_pair.key, "content")) {
+                                if (current_pair.value->type != JSON_STRING ||
+                                    0 != copy_string(current_pair.value->as.string,
+                                                     &resp->content[j].as.tool_result.content,
+                                                     "content.tool_result.content", error_stream)) {
+                                    fprintf(error_stream, "tool_result content was not a string\\n");
+                                    goto cleanup;
+                                }
+                            } else if (0 == strcmp(current_pair.key, "is_error")) {
+                                if (current_pair.value->type != JSON_BOOL) {
+                                    fprintf(error_stream, "tool_result is_error was not a boolean\\n");
+                                    goto cleanup;
+                                }
+                                resp->content[j].as.tool_result.is_error =
+                                    current_pair.value->as.boolean;
+                            }
+                            break;
+                        default:
+                            fprintf(error_stream, "unsupported content type\n");
                             goto cleanup;
-                        }
-                        continue;
                     }
                 }
             }
             continue;
         }
+
         if (0 == strcmp(key, "usage")) {
             if (value->type != JSON_OBJECT) {
                 continue;
@@ -218,6 +312,7 @@ AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_s
                 }
             }
         }
+
         if (0 == strcmp(key, "error")) {
             if (value->type != JSON_OBJECT) {
                 continue;
@@ -361,6 +456,9 @@ AnthropicMessage *agent_messages_to_anthropic_messages(const Conversation *conv)
         case SYSTEM:
             anthropic_messages[i].role = ANTHROPIC_ROLE_SYSTEM;
             break;
+        case TOOL:
+            anthropic_messages[i].role = ANTHROPIC_ROLE_USER;
+            break;
         }
     }
 
@@ -439,8 +537,9 @@ void anthropic_complete_inference(void *context, const Conversation *conv, const
         }
     }
 
-    if (NULL != resp->content && resp->content_count > 0) {
-        out->text = resp->content->text ? strdup(resp->content->text) : NULL;
+    if (NULL != resp->content && resp->content_count > 0 &&
+        resp->content->type == ANTHROPIC_CONTENT_TEXT) {
+        out->text = resp->content->as.text.text ? strdup(resp->content->as.text.text) : NULL;
     }
     out->stop_reason = resp->stop_reason ? strdup(resp->stop_reason) : NULL;
 

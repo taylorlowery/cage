@@ -43,6 +43,7 @@ typedef enum {
     ANTHROPIC_CONTENT_TEXT,
     ANTHROPIC_CONTENT_TOOL_USE,
     ANTHROPIC_CONTENT_TOOL_RESULT,
+    ANTHROPIC_CONTENT_UNKNOWN,
 } AnthropicContentType;
 
 typedef struct {
@@ -97,6 +98,7 @@ void free_anthropic_context(void *context);
 
 size_t serialize_anthropic_request(char *body_buf, size_t buffer_len, AnthropicRequest *request);
 AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_stream);
+void free_anthropic_response(AnthropicResponse *resp);
 
 AnthropicResponse *anthropic_run_inference(char *api_key, char *model, int max_tokens,
                                            AnthropicMessage *messages, int message_count,

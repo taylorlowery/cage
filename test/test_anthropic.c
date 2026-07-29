@@ -93,10 +93,10 @@ void test_deserialize_json(void) {
 
     TEST_ASSERT_NOT_NULL_MESSAGE(resp->content,
                                  "resp->content is NULL - content field not processed");
-    TEST_ASSERT_EQUAL_STRING("text", resp->content[0].type);
+    TEST_ASSERT_EQUAL_INT(ANTHROPIC_CONTENT_TEXT, resp->content[0].type);
     TEST_ASSERT_EQUAL_STRING(
         "Howdy! \xf0\x9f\x91\x8b How's it going? What can I help you with today?",
-        resp->content[0].text);
+        resp->content[0].as.text.text);
 
     TEST_ASSERT_EQUAL_size_t(11, resp->usage.input_tokens);
     TEST_ASSERT_EQUAL_size_t(24, resp->usage.output_tokens);
@@ -105,8 +105,37 @@ void test_deserialize_json(void) {
 
     TEST_ASSERT_EQUAL(1, resp->content_count);
 
-    free(resp->content);
-    free(resp);
+    free_anthropic_response(resp);
+    free_json_value(json_parsed);
+}
+
+void test_deserialize_tool_content(void) {
+    const char *json =
+        "{\"type\":\"message\",\"content\":["
+        "{\"name\":\"read_file\",\"input\":\"README.md\","
+        "\"id\":\"toolu_123\",\"type\":\"tool_use\"},"
+        "{\"is_error\":false,\"content\":\"file contents\","
+        "\"tool_use_id\":\"toolu_123\",\"type\":\"tool_result\"}]}";
+    Parser p;
+    init_parser(&p, json, stderr);
+    JsonValue *json_parsed = parse_json(&p);
+
+    TEST_ASSERT_NOT_NULL(json_parsed);
+    AnthropicResponse *resp = deserialize_anthropic_response(json_parsed, stderr);
+    TEST_ASSERT_NOT_NULL(resp);
+    TEST_ASSERT_EQUAL_size_t(2, resp->content_count);
+
+    TEST_ASSERT_EQUAL_INT(ANTHROPIC_CONTENT_TOOL_USE, resp->content[0].type);
+    TEST_ASSERT_EQUAL_STRING("toolu_123", resp->content[0].as.tool_use.id);
+    TEST_ASSERT_EQUAL_STRING("read_file", resp->content[0].as.tool_use.name);
+    TEST_ASSERT_EQUAL_STRING("README.md", resp->content[0].as.tool_use.input);
+
+    TEST_ASSERT_EQUAL_INT(ANTHROPIC_CONTENT_TOOL_RESULT, resp->content[1].type);
+    TEST_ASSERT_EQUAL_STRING("toolu_123", resp->content[1].as.tool_result.tool_use_id);
+    TEST_ASSERT_EQUAL_STRING("file contents", resp->content[1].as.tool_result.content);
+    TEST_ASSERT_FALSE(resp->content[1].as.tool_result.is_error);
+
+    free_anthropic_response(resp);
     free_json_value(json_parsed);
 }
 
@@ -115,6 +144,7 @@ int main(void) {
     RUN_TEST(test_serialize_request_body_single_message);
     RUN_TEST(test_serialize_request_body_multiple_messages);
     RUN_TEST(test_deserialize_json);
+    RUN_TEST(test_deserialize_tool_content);
     UNITY_END();
     return 0;
 }
