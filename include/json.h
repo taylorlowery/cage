@@ -84,10 +84,17 @@ typedef struct JsonValue {
     } as;
 } JsonValue;
 
+typedef struct {
+    char *buffer;
+    size_t buffer_length;
+    size_t buffer_capacity;
+} SerializerBuffer;
+
 void init_scanner(Scanner *scanner, const char *source);
 Token scan_token(Scanner *scanner);
 void init_parser(Parser *parser, const char *source, FILE *error_stream);
 JsonValue *parse_json(Parser *parser);
+char *json_value_to_string(const JsonValue *value);
 void free_json_value(JsonValue *value);
 
 #endif // JSON_H
