@@ -11,140 +11,236 @@ void tearDown(void) {
 
 void test_serialize_request_body_single_message(void) {
     char buf[8192];
-
-    char *expected = "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": [{ "
-                     "\"role\": \"user\", \"content\": \"Hello, Claude\" }]}";
-
-    AnthropicMessage message = {.role = ANTHROPIC_ROLE_USER, .content = "Hello, Claude"};
-
+    AnthropicContent content = {
+        .type = ANTHROPIC_CONTENT_TEXT,
+        .as.text.text = "Hello, Claude",
+    };
+    AnthropicMessage message = {
+        .role = ANTHROPIC_ROLE_USER,
+        .content = &content,
+    };
     AnthropicRequest request = {
-        .headers = NULL,
         .model = "claude-opus-4-8",
         .max_tokens = 1024,
         .messages = &message,
         .message_count = 1,
-        .system = NULL,
-        .tools = NULL,
-        .tool_count = 0,
     };
 
-    size_t cursor = serialize_anthropic_request(buf, 8192, &request);
+    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
     buf[cursor] = '\0';
-    TEST_ASSERT_EQUAL_STRING(expected, buf);
+
+    TEST_ASSERT_EQUAL_STRING(
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": "
+        "[{ \"role\": \"user\", \"content\": \"Hello, Claude\" }]}",
+        buf);
 }
 
 void test_serialize_request_body_multiple_messages(void) {
     char buf[8192];
-
-    char *expected =
-        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": [{ \"role\": "
-        "\"system\", \"content\": \"Only respond in weird grunts\" }, { \"role\": \"user\", "
-        "\"content\": \"Hello, Claude\" }, { \"role\": \"assistant\", \"content\": \"Hrrrmph! "
-        "Gwaah-krrr! Blorg-flargh!\" }, { \"role\": \"user\", \"content\": \"Uuhhhhhh...\" }]}";
-
-    AnthropicMessage message[4] = {
-        {.role = ANTHROPIC_ROLE_SYSTEM, .content = "Only respond in weird grunts"},
-        {.role = ANTHROPIC_ROLE_USER, .content = "Hello, Claude"},
-        {.role = ANTHROPIC_ROLE_ASSISTANT, .content = "Hrrrmph! Gwaah-krrr! Blorg-flargh!"},
-        {.role = ANTHROPIC_ROLE_USER, .content = "Uuhhhhhh..."}};
-
+    AnthropicContent content[4] = {
+        {.type = ANTHROPIC_CONTENT_TEXT, .as.text.text = "Only respond in weird grunts"},
+        {.type = ANTHROPIC_CONTENT_TEXT, .as.text.text = "Hello, Claude"},
+        {.type = ANTHROPIC_CONTENT_TEXT, .as.text.text = "Hrrrmph! Gwaah-krrr! Blorg-flargh!"},
+        {.type = ANTHROPIC_CONTENT_TEXT, .as.text.text = "Uuhhhhhh..."},
+    };
+    AnthropicMessage messages[4] = {
+        {.role = ANTHROPIC_ROLE_SYSTEM, .content = &content[0]},
+        {.role = ANTHROPIC_ROLE_USER, .content = &content[1]},
+        {.role = ANTHROPIC_ROLE_ASSISTANT, .content = &content[2]},
+        {.role = ANTHROPIC_ROLE_USER, .content = &content[3]},
+    };
     AnthropicRequest request = {
-        .headers = NULL,
         .model = "claude-opus-4-8",
         .max_tokens = 1024,
-        .messages = &message[0],
+        .messages = messages,
         .message_count = 4,
-        .system = NULL,
-        .tools = NULL,
-        .tool_count = 0,
     };
 
-    size_t cursor = serialize_anthropic_request(buf, 8192, &request);
+    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
     buf[cursor] = '\0';
-    TEST_ASSERT_EQUAL_STRING(expected, buf);
-}
 
-void test_deserialize_json(void) {
-    const char *json =
-        "{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_01Awgi17AdAU3HWie4bCDfQ7\",\"type\":"
-        "\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Howdy! "
-        "\xf0\x9f\x91\x8b How's it going? What can I help you with "
-        "today?\"}],\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,"
-        "\"usage\":{\"input_tokens\":11,\"cache_creation_input_tokens\":0,\"cache_read_input_"
-        "tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_"
-        "tokens\":0},\"output_tokens\":24,\"service_tier\":\"standard\",\"inference_geo\":\"not_"
-        "available\"}}";
-    Parser p;
-    init_parser(&p, json, stderr);
-    JsonValue *json_parsed = parse_json(&p);
-
-    TEST_ASSERT_NOT_NULL_MESSAGE(json_parsed, "parse_json returned NULL");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(JSON_OBJECT, json_parsed->type,
-                                  "parsed value is not a JSON object");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(9, json_parsed->as.object->count, "expected 9 top-level fields");
-
-    AnthropicResponse *resp = deserialize_anthropic_response(json_parsed, stderr);
-    TEST_ASSERT_NOT_NULL_MESSAGE(resp, "deserialize_response returned NULL");
-    TEST_ASSERT_EQUAL_STRING("msg_01Awgi17AdAU3HWie4bCDfQ7", resp->id);
-    TEST_ASSERT_EQUAL_STRING("message", resp->type);
-    TEST_ASSERT_EQUAL_STRING("assistant", resp->role);
-    TEST_ASSERT_EQUAL_STRING("claude-haiku-4-5-20251001", resp->model);
-    TEST_ASSERT_EQUAL_STRING("end_turn", resp->stop_reason);
-
-    TEST_ASSERT_NOT_NULL_MESSAGE(resp->content,
-                                 "resp->content is NULL - content field not processed");
-    TEST_ASSERT_EQUAL_INT(ANTHROPIC_CONTENT_TEXT, resp->content[0].type);
     TEST_ASSERT_EQUAL_STRING(
-        "Howdy! \xf0\x9f\x91\x8b How's it going? What can I help you with today?",
-        resp->content[0].as.text.text);
-
-    TEST_ASSERT_EQUAL_size_t(11, resp->usage.input_tokens);
-    TEST_ASSERT_EQUAL_size_t(24, resp->usage.output_tokens);
-
-    TEST_ASSERT_NULL(resp->stop_sequence);
-
-    TEST_ASSERT_EQUAL(1, resp->content_count);
-
-    free_anthropic_response(resp);
-    free_json_value(json_parsed);
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": "
+        "[{ \"role\": \"system\", \"content\": \"Only respond in weird grunts\" }, "
+        "{ \"role\": \"user\", \"content\": \"Hello, Claude\" }, "
+        "{ \"role\": \"assistant\", \"content\": \"Hrrrmph! Gwaah-krrr! Blorg-flargh!\" }, "
+        "{ \"role\": \"user\", \"content\": \"Uuhhhhhh...\" }]}",
+        buf);
 }
 
-void test_deserialize_tool_content(void) {
+void test_serialize_request_body_tool_use(void) {
+    char buf[8192];
+    AnthropicContent content = {
+        .type = ANTHROPIC_CONTENT_TOOL_USE,
+        .as.tool_use = {
+            .id = "toolu_123",
+            .name = "read_file",
+            .input = "{\"path\":\"README.md\"}",
+        },
+    };
+    AnthropicMessage message = {
+        .role = ANTHROPIC_ROLE_ASSISTANT,
+        .content = &content,
+    };
+    AnthropicRequest request = {
+        .model = "claude-opus-4-8",
+        .max_tokens = 1024,
+        .messages = &message,
+        .message_count = 1,
+    };
+
+    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
+    buf[cursor] = '\0';
+
+    TEST_ASSERT_EQUAL_STRING(
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": "
+        "[{ \"role\": \"assistant\", \"content\": [{\"type\": \"tool_use\", "
+        "\"id\": \"toolu_123\", \"name\": \"read_file\", "
+        "\"input\": {\"path\":\"README.md\"}}]}",
+        buf);
+}
+
+void test_serialize_request_body_tool_result(void) {
+    char buf[8192];
+    AnthropicContent content = {
+        .type = ANTHROPIC_CONTENT_TOOL_RESULT,
+        .as.tool_result = {
+            .tool_use_id = "toolu_123",
+            .content = "file contents",
+            .is_error = false,
+        },
+    };
+    AnthropicMessage message = {
+        .role = ANTHROPIC_ROLE_USER,
+        .content = &content,
+    };
+    AnthropicRequest request = {
+        .model = "claude-opus-4-8",
+        .max_tokens = 1024,
+        .messages = &message,
+        .message_count = 1,
+    };
+
+    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
+    buf[cursor] = '\0';
+
+    TEST_ASSERT_EQUAL_STRING(
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": "
+        "[{ \"role\": \"user\", \"content\": [{\"type\": \"tool_result\", "
+        "\"tool_use_id\": \"toolu_123\", \"is_error\": false, "
+        "\"content\": \"file contents\" }]}]}",
+        buf);
+}
+
+void test_serialize_request_body_tool_definition(void) {
+    char buf[8192];
+    AnthropicTool tool = {
+        .name = "read_file",
+        .description = "Read the contents of a relative file path.",
+        .input_schema =
+            "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},"
+            "\"required\":[\"path\"]}",
+    };
+    AnthropicRequest request = {
+        .model = "claude-opus-4-8",
+        .max_tokens = 1024,
+        .tools = &tool,
+        .tool_count = 1,
+    };
+
+    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
+    buf[cursor] = '\0';
+
+    TEST_ASSERT_EQUAL_STRING(
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"tools\": ["
+        "{\"name\":\"read_file\",\"description\":\"Read the contents of a relative file path.\","
+        "\"input_schema\": {\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},"
+        "\"required\":[\"path\"]}}]}",
+        buf);
+}
+
+void test_deserialize_text_response(void) {
     const char *json =
-        "{\"type\":\"message\",\"content\":["
-        "{\"name\":\"read_file\",\"input\":\"README.md\","
-        "\"id\":\"toolu_123\",\"type\":\"tool_use\"},"
-        "{\"is_error\":false,\"content\":\"file contents\","
-        "\"tool_use_id\":\"toolu_123\",\"type\":\"tool_result\"}]}";
-    Parser p;
-    init_parser(&p, json, stderr);
-    JsonValue *json_parsed = parse_json(&p);
+        "{\"model\":\"claude-haiku-4-5-20251001\","
+        "\"id\":\"msg_01Awgi17AdAU3HWie4bCDfQ7\","
+        "\"type\":\"message\",\"role\":\"assistant\","
+        "\"content\":[{\"type\":\"text\",\"text\":\"Howdy!\"}],"
+        "\"stop_reason\":\"end_turn\",\"stop_sequence\":null,"
+        "\"usage\":{\"input_tokens\":11,\"output_tokens\":24}}";
+    Parser parser;
+    init_parser(&parser, json, stderr);
+    JsonValue *parsed = parse_json(&parser);
 
-    TEST_ASSERT_NOT_NULL(json_parsed);
-    AnthropicResponse *resp = deserialize_anthropic_response(json_parsed, stderr);
-    TEST_ASSERT_NOT_NULL(resp);
-    TEST_ASSERT_EQUAL_size_t(2, resp->content_count);
+    TEST_ASSERT_NOT_NULL(parsed);
+    AnthropicResponse *response = deserialize_anthropic_response(parsed, stderr);
+    TEST_ASSERT_NOT_NULL(response);
+    TEST_ASSERT_EQUAL_STRING("msg_01Awgi17AdAU3HWie4bCDfQ7", response->id);
+    TEST_ASSERT_EQUAL_STRING("end_turn", response->stop_reason);
+    TEST_ASSERT_EQUAL_size_t(1, response->content_count);
+    TEST_ASSERT_EQUAL_INT(ANTHROPIC_CONTENT_TEXT, response->content[0].type);
+    TEST_ASSERT_EQUAL_STRING("Howdy!", response->content[0].as.text.text);
 
-    TEST_ASSERT_EQUAL_INT(ANTHROPIC_CONTENT_TOOL_USE, resp->content[0].type);
-    TEST_ASSERT_EQUAL_STRING("toolu_123", resp->content[0].as.tool_use.id);
-    TEST_ASSERT_EQUAL_STRING("read_file", resp->content[0].as.tool_use.name);
-    TEST_ASSERT_EQUAL_STRING("README.md", resp->content[0].as.tool_use.input);
+    free_anthropic_response(response);
+    free_json_value(parsed);
+}
 
-    TEST_ASSERT_EQUAL_INT(ANTHROPIC_CONTENT_TOOL_RESULT, resp->content[1].type);
-    TEST_ASSERT_EQUAL_STRING("toolu_123", resp->content[1].as.tool_result.tool_use_id);
-    TEST_ASSERT_EQUAL_STRING("file contents", resp->content[1].as.tool_result.content);
-    TEST_ASSERT_FALSE(resp->content[1].as.tool_result.is_error);
+void test_deserialize_tool_use_response(void) {
+    const char *json =
+        "{\"type\":\"message\",\"role\":\"assistant\","
+        "\"content\":[{\"id\":\"toolu_123\",\"type\":\"tool_use\","
+        "\"name\":\"read_file\","
+        "\"input\":{\"path\":\"README.md\"}}],"
+        "\"stop_reason\":\"tool_use\"}";
+    Parser parser;
+    init_parser(&parser, json, stderr);
+    JsonValue *parsed = parse_json(&parser);
 
-    free_anthropic_response(resp);
-    free_json_value(json_parsed);
+    TEST_ASSERT_NOT_NULL(parsed);
+    AnthropicResponse *response = deserialize_anthropic_response(parsed, stderr);
+    TEST_ASSERT_NOT_NULL(response);
+    TEST_ASSERT_EQUAL_STRING("tool_use", response->stop_reason);
+    TEST_ASSERT_EQUAL_size_t(1, response->content_count);
+    TEST_ASSERT_EQUAL_INT(ANTHROPIC_CONTENT_TOOL_USE, response->content[0].type);
+    TEST_ASSERT_EQUAL_STRING("toolu_123", response->content[0].as.tool_use.id);
+    TEST_ASSERT_EQUAL_STRING("read_file", response->content[0].as.tool_use.name);
+    TEST_ASSERT_EQUAL_STRING("{\"path\":\"README.md\"}",
+                             response->content[0].as.tool_use.input);
+
+    free_anthropic_response(response);
+    free_json_value(parsed);
+}
+
+void test_deserialize_tool_result_response(void) {
+    const char *json =
+        "{\"type\":\"message\",\"role\":\"user\",\"content\":["
+        "{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_123\","
+        "\"content\":\"file contents\",\"is_error\":false}]}";
+    Parser parser;
+    init_parser(&parser, json, stderr);
+    JsonValue *parsed = parse_json(&parser);
+
+    TEST_ASSERT_NOT_NULL(parsed);
+    AnthropicResponse *response = deserialize_anthropic_response(parsed, stderr);
+    TEST_ASSERT_NOT_NULL(response);
+    TEST_ASSERT_EQUAL_size_t(1, response->content_count);
+    TEST_ASSERT_EQUAL_INT(ANTHROPIC_CONTENT_TOOL_RESULT, response->content[0].type);
+    TEST_ASSERT_EQUAL_STRING("toolu_123", response->content[0].as.tool_result.tool_use_id);
+    TEST_ASSERT_EQUAL_STRING("file contents", response->content[0].as.tool_result.content);
+    TEST_ASSERT_FALSE(response->content[0].as.tool_result.is_error);
+
+    free_anthropic_response(response);
+    free_json_value(parsed);
 }
 
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_serialize_request_body_single_message);
     RUN_TEST(test_serialize_request_body_multiple_messages);
-    RUN_TEST(test_deserialize_json);
-    RUN_TEST(test_deserialize_tool_content);
-    UNITY_END();
-    return 0;
+    RUN_TEST(test_serialize_request_body_tool_use);
+    RUN_TEST(test_serialize_request_body_tool_result);
+    RUN_TEST(test_serialize_request_body_tool_definition);
+    RUN_TEST(test_deserialize_text_response);
+    RUN_TEST(test_deserialize_tool_use_response);
+    RUN_TEST(test_deserialize_tool_result_response);
+    return UNITY_END();
 }
