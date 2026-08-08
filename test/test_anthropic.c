@@ -10,14 +10,14 @@ void tearDown(void) {
 }
 
 void test_serialize_request_body_single_message(void) {
-    char buf[8192];
     AnthropicContent content = {
         .type = ANTHROPIC_CONTENT_TEXT,
         .as.text.text = "Hello, Claude",
     };
     AnthropicMessage message = {
         .role = ANTHROPIC_ROLE_USER,
-        .content = &content,
+        .content_blocks = &content,
+        .content_count = 1,
     };
     AnthropicRequest request = {
         .model = "claude-opus-4-8",
@@ -25,29 +25,31 @@ void test_serialize_request_body_single_message(void) {
         .messages = &message,
         .message_count = 1,
     };
+    SerializerBuffer buffer = {0};
 
-    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
-    buf[cursor] = '\0';
+    int err = serialize_anthropic_request(&buffer, &request);
 
+    TEST_ASSERT_EQUAL_INT(0, err);
     TEST_ASSERT_EQUAL_STRING(
-        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": "
-        "[{ \"role\": \"user\", \"content\": \"Hello, Claude\" }]}",
-        buf);
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, "
+        "\"messages\": [{ \"role\": \"user\", \"content\": "
+        "[{ \"type\": \"text\", \"text\": \"Hello, Claude\" }]}]}",
+        buffer.buffer);
+    free(buffer.buffer);
 }
 
 void test_serialize_request_body_multiple_messages(void) {
-    char buf[8192];
-    AnthropicContent content[4] = {
+    AnthropicContent contents[4] = {
         {.type = ANTHROPIC_CONTENT_TEXT, .as.text.text = "Only respond in weird grunts"},
         {.type = ANTHROPIC_CONTENT_TEXT, .as.text.text = "Hello, Claude"},
         {.type = ANTHROPIC_CONTENT_TEXT, .as.text.text = "Hrrrmph! Gwaah-krrr! Blorg-flargh!"},
         {.type = ANTHROPIC_CONTENT_TEXT, .as.text.text = "Uuhhhhhh..."},
     };
     AnthropicMessage messages[4] = {
-        {.role = ANTHROPIC_ROLE_SYSTEM, .content = &content[0]},
-        {.role = ANTHROPIC_ROLE_USER, .content = &content[1]},
-        {.role = ANTHROPIC_ROLE_ASSISTANT, .content = &content[2]},
-        {.role = ANTHROPIC_ROLE_USER, .content = &content[3]},
+        {.role = ANTHROPIC_ROLE_SYSTEM, .content_blocks = &contents[0], .content_count = 1},
+        {.role = ANTHROPIC_ROLE_USER, .content_blocks = &contents[1], .content_count = 1},
+        {.role = ANTHROPIC_ROLE_ASSISTANT, .content_blocks = &contents[2], .content_count = 1},
+        {.role = ANTHROPIC_ROLE_USER, .content_blocks = &contents[3], .content_count = 1},
     };
     AnthropicRequest request = {
         .model = "claude-opus-4-8",
@@ -55,21 +57,26 @@ void test_serialize_request_body_multiple_messages(void) {
         .messages = messages,
         .message_count = 4,
     };
+    SerializerBuffer buffer = {0};
 
-    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
-    buf[cursor] = '\0';
+    int err = serialize_anthropic_request(&buffer, &request);
 
+    TEST_ASSERT_EQUAL_INT(0, err);
     TEST_ASSERT_EQUAL_STRING(
-        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": "
-        "[{ \"role\": \"system\", \"content\": \"Only respond in weird grunts\" }, "
-        "{ \"role\": \"user\", \"content\": \"Hello, Claude\" }, "
-        "{ \"role\": \"assistant\", \"content\": \"Hrrrmph! Gwaah-krrr! Blorg-flargh!\" }, "
-        "{ \"role\": \"user\", \"content\": \"Uuhhhhhh...\" }]}",
-        buf);
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, "
+        "\"messages\": [{ \"role\": \"system\", \"content\": "
+        "[{ \"type\": \"text\", \"text\": \"Only respond in weird grunts\" }]}, "
+        "{ \"role\": \"user\", \"content\": "
+        "[{ \"type\": \"text\", \"text\": \"Hello, Claude\" }]}, "
+        "{ \"role\": \"assistant\", \"content\": "
+        "[{ \"type\": \"text\", \"text\": \"Hrrrmph! Gwaah-krrr! Blorg-flargh!\" }]}, "
+        "{ \"role\": \"user\", \"content\": "
+        "[{ \"type\": \"text\", \"text\": \"Uuhhhhhh...\" }]}]}",
+        buffer.buffer);
+    free(buffer.buffer);
 }
 
 void test_serialize_request_body_tool_use(void) {
-    char buf[8192];
     AnthropicContent content = {
         .type = ANTHROPIC_CONTENT_TOOL_USE,
         .as.tool_use = {
@@ -80,7 +87,8 @@ void test_serialize_request_body_tool_use(void) {
     };
     AnthropicMessage message = {
         .role = ANTHROPIC_ROLE_ASSISTANT,
-        .content = &content,
+        .content_blocks = &content,
+        .content_count = 1,
     };
     AnthropicRequest request = {
         .model = "claude-opus-4-8",
@@ -88,20 +96,21 @@ void test_serialize_request_body_tool_use(void) {
         .messages = &message,
         .message_count = 1,
     };
+    SerializerBuffer buffer = {0};
 
-    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
-    buf[cursor] = '\0';
+    int err = serialize_anthropic_request(&buffer, &request);
 
+    TEST_ASSERT_EQUAL_INT(0, err);
     TEST_ASSERT_EQUAL_STRING(
-        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": "
-        "[{ \"role\": \"assistant\", \"content\": [{\"type\": \"tool_use\", "
-        "\"id\": \"toolu_123\", \"name\": \"read_file\", "
-        "\"input\": {\"path\":\"README.md\"}}]}",
-        buf);
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, "
+        "\"messages\": [{ \"role\": \"assistant\", \"content\": "
+        "[{ \"type\": \"tool_use\", \"id\": \"toolu_123\", "
+        "\"name\": \"read_file\", \"input\": {\"path\":\"README.md\"} }]}]}",
+        buffer.buffer);
+    free(buffer.buffer);
 }
 
 void test_serialize_request_body_tool_result(void) {
-    char buf[8192];
     AnthropicContent content = {
         .type = ANTHROPIC_CONTENT_TOOL_RESULT,
         .as.tool_result = {
@@ -112,7 +121,8 @@ void test_serialize_request_body_tool_result(void) {
     };
     AnthropicMessage message = {
         .role = ANTHROPIC_ROLE_USER,
-        .content = &content,
+        .content_blocks = &content,
+        .content_count = 1,
     };
     AnthropicRequest request = {
         .model = "claude-opus-4-8",
@@ -120,20 +130,21 @@ void test_serialize_request_body_tool_result(void) {
         .messages = &message,
         .message_count = 1,
     };
+    SerializerBuffer buffer = {0};
 
-    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
-    buf[cursor] = '\0';
+    int err = serialize_anthropic_request(&buffer, &request);
 
+    TEST_ASSERT_EQUAL_INT(0, err);
     TEST_ASSERT_EQUAL_STRING(
-        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"messages\": "
-        "[{ \"role\": \"user\", \"content\": [{\"type\": \"tool_result\", "
-        "\"tool_use_id\": \"toolu_123\", \"is_error\": false, "
-        "\"content\": \"file contents\" }]}]}",
-        buf);
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, "
+        "\"messages\": [{ \"role\": \"user\", \"content\": "
+        "[{ \"type\": \"tool_result\", \"tool_use_id\": \"toolu_123\", "
+        "\"is_error\": false, \"content\": \"file contents\" }]}]}",
+        buffer.buffer);
+    free(buffer.buffer);
 }
 
 void test_serialize_request_body_tool_definition(void) {
-    char buf[8192];
     AnthropicTool tool = {
         .name = "read_file",
         .description = "Read the contents of a relative file path.",
@@ -147,16 +158,20 @@ void test_serialize_request_body_tool_definition(void) {
         .tools = &tool,
         .tool_count = 1,
     };
+    SerializerBuffer buffer = {0};
 
-    size_t cursor = serialize_anthropic_request(buf, sizeof(buf), &request);
-    buf[cursor] = '\0';
+    int err = serialize_anthropic_request(&buffer, &request);
 
+    TEST_ASSERT_EQUAL_INT(0, err);
     TEST_ASSERT_EQUAL_STRING(
-        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, \"tools\": ["
-        "{\"name\":\"read_file\",\"description\":\"Read the contents of a relative file path.\","
-        "\"input_schema\": {\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},"
+        "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, "
+        "\"tools\": [{\"name\":\"read_file\","
+        "\"description\":\"Read the contents of a relative file path.\","
+        "\"input_schema\": {\"type\":\"object\","
+        "\"properties\":{\"path\":{\"type\":\"string\"}},"
         "\"required\":[\"path\"]}}]}",
-        buf);
+        buffer.buffer);
+    free(buffer.buffer);
 }
 
 void test_deserialize_text_response(void) {

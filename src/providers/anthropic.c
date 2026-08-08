@@ -41,61 +41,148 @@ const char *role_to_string(AnthropicMessageRole role) {
 
 // serialize_request_body writes the contents of an AnthropicRequest
 // to a buffer as a JSON string.
-size_t serialize_anthropic_request(char *body_buf, size_t buffer_len, AnthropicRequest *request) {
-    size_t cursor = snprintf(body_buf, buffer_len, "{\"model\": \"%s\", \"max_tokens\": %zu, ",
-                             request->model, request->max_tokens);
+int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *request) {
+    if (NULL == body_buf || NULL == request || NULL == request->model) {
+        return -1;
+    }
 
-    if (0 < request->message_count) {
-        cursor += snprintf(body_buf + cursor, buffer_len - cursor, "\"messages\": [");
+    if (0 != append_bytes_to_serializer_buffer(body_buf, "{\"model\": ",
+                                                strlen("{\"model\": "))) {
+        return -1;
+    }
+    if (0 != append_json_string_to_serializer_buffer(body_buf, request->model)) {
+        return -1;
+    }
+    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"max_tokens\": ",
+                                                strlen(", \"max_tokens\": "))) {
+        return -1;
+    }
 
-        for (size_t i = 0; i < request->message_count; i++) {
-            AnthropicMessage message = request->messages[i];
+    char max_tokens_buf[32];
+    int max_tokens_len = snprintf(max_tokens_buf, sizeof(max_tokens_buf), "%zu",
+                                  request->max_tokens);
+    if (max_tokens_len < 0 || (size_t)max_tokens_len >= sizeof(max_tokens_buf) ||
+        0 != append_bytes_to_serializer_buffer(body_buf, max_tokens_buf,
+                                               (size_t)max_tokens_len)) {
+        return -1;
+    }
 
-            switch (message.content->type) {
-                case ANTHROPIC_CONTENT_TEXT:
-                    cursor += snprintf(body_buf + cursor, buffer_len - cursor,
-                                    "{ \"role\": \"%s\", \"content\": \"%s\" }",
-                                    role_to_string(message.role), message.content->as.text.text);
-                    break;
-                case ANTHROPIC_CONTENT_TOOL_USE:
-                    cursor += snprintf(body_buf + cursor, buffer_len - cursor,
-                                    "{ \"role\": \"%s\", \"content\": [{\"type\": \"tool_use\", \"id\": \"%s\", \"name\": \"%s\", \"input\": %s}]}",
-                                    role_to_string(message.role),
-                                    message.content->as.tool_use.id,
-                                    message.content->as.tool_use.name,
-                                    message.content->as.tool_use.input);
-                    break;
-                case ANTHROPIC_CONTENT_TOOL_RESULT:
-                    // role should be USER
-                    cursor += snprintf(body_buf + cursor, buffer_len - cursor,
-                                    "{ \"role\": \"%s\", \"content\": {\"type\": \"tool_result\", \"tool_use_id\": \"%s\", \"is_error\": %s, \"content\": \"%s\" }",
-                                    role_to_string(message.role),
-                                    message.content->as.tool_result.tool_use_id,
-                                    message.content->as.tool_result.is_error ? "true" : "false",
-                                    message.content->as.tool_result.content);
-                    break;
-                default:
-                    // TODO: decide how to handle invalid
-                    break;
-            }
-
-            // follow all but last message with comma
-            if (i < request->message_count - 1) {
-                cursor += snprintf(body_buf + cursor, buffer_len - cursor, ", ");
-            }
-            // TODO: resize buffer if necessary? error if we go over?
+    if (request->message_count > 0) {
+        if (NULL == request->messages ||
+            0 != append_bytes_to_serializer_buffer(body_buf, ", \"messages\": [",
+                                                    strlen(", \"messages\": ["))) {
+            return -1;
         }
 
-        cursor += snprintf(body_buf + cursor, buffer_len - cursor, "]");
+        for (size_t i = 0; i < request->message_count; i++) {
+            AnthropicMessage *message = &request->messages[i];
+            if (message->role == ANTHROPIC_ROLE_UNKNOWN ||
+                NULL == message->content_blocks || message->content_count == 0) {
+                return -1;
+            }
+
+            if (0 != append_bytes_to_serializer_buffer(body_buf, "{ \"role\": ",
+                                                        strlen("{ \"role\": "))) {
+                return -1;
+            }
+            if (0 != append_json_string_to_serializer_buffer(body_buf,
+                                                              role_to_string(message->role)) ||
+                0 != append_bytes_to_serializer_buffer(body_buf, ", \"content\": [",
+                                                        strlen(", \"content\": ["))) {
+                return -1;
+            }
+
+            for (size_t j = 0; j < message->content_count; j++) {
+                AnthropicContent *content = &message->content_blocks[j];
+                int err = 0;
+
+                if (j > 0) {
+                    err = append_bytes_to_serializer_buffer(body_buf, ", ", 2);
+                }
+                if (0 != err) {
+                    return -1;
+                }
+
+                switch (content->type) {
+                case ANTHROPIC_CONTENT_TEXT:
+                    if (NULL == content->as.text.text ||
+                        0 != append_bytes_to_serializer_buffer(body_buf,
+                                                                "{ \"type\": \"text\", \"text\": ",
+                                                                strlen("{ \"type\": \"text\", \"text\": ")) ||
+                        0 != append_json_string_to_serializer_buffer(body_buf,
+                                                                       content->as.text.text) ||
+                        0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
+                        return -1;
+                    }
+                    break;
+                case ANTHROPIC_CONTENT_TOOL_USE:
+                    if (NULL == content->as.tool_use.id || NULL == content->as.tool_use.name ||
+                        NULL == content->as.tool_use.input ||
+                        0 != append_bytes_to_serializer_buffer(body_buf,
+                                                                "{ \"type\": \"tool_use\", \"id\": ",
+                                                                strlen("{ \"type\": \"tool_use\", \"id\": ")) ||
+                        0 != append_json_string_to_serializer_buffer(body_buf,
+                                                                       content->as.tool_use.id) ||
+                        0 != append_bytes_to_serializer_buffer(body_buf, ", \"name\": ",
+                                                                strlen(", \"name\": ")) ||
+                        0 != append_json_string_to_serializer_buffer(body_buf,
+                                                                       content->as.tool_use.name) ||
+                        0 != append_bytes_to_serializer_buffer(body_buf, ", \"input\": ",
+                                                                strlen(", \"input\": ")) ||
+                        0 != append_bytes_to_serializer_buffer(body_buf,
+                                                                content->as.tool_use.input,
+                                                                strlen(content->as.tool_use.input)) ||
+                        0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
+                        return -1;
+                    }
+                    break;
+                case ANTHROPIC_CONTENT_TOOL_RESULT:
+                    if (NULL == content->as.tool_result.tool_use_id ||
+                        NULL == content->as.tool_result.content ||
+                        0 != append_bytes_to_serializer_buffer(body_buf,
+                                                                "{ \"type\": \"tool_result\", \"tool_use_id\": ",
+                                                                strlen("{ \"type\": \"tool_result\", \"tool_use_id\": ")) ||
+                        0 != append_json_string_to_serializer_buffer(
+                                 body_buf, content->as.tool_result.tool_use_id) ||
+                        0 != append_bytes_to_serializer_buffer(body_buf, ", \"is_error\": ",
+                                                                strlen(", \"is_error\": ")) ||
+                        0 != append_bytes_to_serializer_buffer(
+                                 body_buf,
+                                 content->as.tool_result.is_error ? "true" : "false",
+                                 content->as.tool_result.is_error ? 4 : 5) ||
+                        0 != append_bytes_to_serializer_buffer(body_buf, ", \"content\": ",
+                                                                strlen(", \"content\": ")) ||
+                        0 != append_json_string_to_serializer_buffer(
+                                 body_buf, content->as.tool_result.content) ||
+                        0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
+                        return -1;
+                    }
+                    break;
+                default:
+                    return -1;
+                }
+            }
+
+            if (0 != append_bytes_to_serializer_buffer(body_buf, "]}", 2)) {
+                return -1;
+            }
+            if (i + 1 < request->message_count &&
+                0 != append_bytes_to_serializer_buffer(body_buf, ", ", 2)) {
+                return -1;
+            }
+        }
+
+        if (0 != append_char_to_serializer_buffer(body_buf, ']')) {
+            return -1;
+        }
     }
 
     if (request->tool_count > 0) {
-
+        // Tool definition serialization is still pending.
+        return -1;
     }
 
-    cursor += snprintf(body_buf + cursor, buffer_len - cursor, "}");
-
-    return cursor;
+    return append_char_to_serializer_buffer(body_buf, '}');
 }
 
 void free_anthropic_response(AnthropicResponse *resp) {
@@ -410,23 +497,9 @@ void free_anthropic_message(AnthropicMessage *message)  {
     if (NULL == message) {
         return;
     }
-    switch(message->content->type) {
-        case ANTHROPIC_CONTENT_TEXT:
-            free(message->content->as.text.text);
-            break;
-        case ANTHROPIC_CONTENT_TOOL_USE:
-            free(message->content->as.tool_use.id);
-            free(message->content->as.tool_use.name);
-            free(message->content->as.tool_use.input);
-            break;
-        case ANTHROPIC_CONTENT_TOOL_RESULT:
-            free(message->content->as.tool_result.tool_use_id);
-            free(message->content->as.tool_result.content);
-            break;
-        default:
-            break;
+    for (size_t i = 0; i < message->content_count; i++) {
+        free_anthropic_content(&message->content_blocks[i]);
     }
-    free_anthropic_content(message->content);
     free(message);
 }
 
@@ -490,15 +563,23 @@ AnthropicResponse *anthropic_run_inference(char *api_key, char *model, size_t ma
                                 .tools = tools,
                                 .tool_count = tool_count};
 
-    char json_buf[8192];
-
-    serialize_anthropic_request(json_buf, 8192, &request);
-
     HTTPResponse *http_resp = NULL;
     JsonValue *v = NULL;
 
+    SerializerBuffer *json_buf = calloc(1, sizeof(SerializerBuffer));
+    if (NULL == json_buf) {
+        fprintf(stderr, "Failed to allocate buffer for response\n");
+        goto cleanup;
+    }
+    resize_serializer_buffer(json_buf, 8192);
+    int err = serialize_anthropic_request(json_buf, &request);
+    if (0 != err) {
+        fprintf(stderr, "Failed to allocate buffer for response\n");
+        goto cleanup;
+    }
+
     http_resp = https_request(HTTP_POST, ANTHROPIC_URL, "443", ANTHROPIC_MESSAGES_PATH, headers, 3,
-                              json_buf, stdout, stderr);
+                              json_buf->buffer, stdout, stderr);
     if (NULL == http_resp) {
         fprintf(stderr, "Failed to get response from Anthropic API\n");
         goto cleanup;
@@ -519,6 +600,9 @@ AnthropicResponse *anthropic_run_inference(char *api_key, char *model, size_t ma
         goto cleanup;
     }
 
+    free(json_buf->buffer);
+    free(json_buf);
+
     free_json_value(v);
     free_http_response(http_resp);
 
@@ -526,6 +610,10 @@ AnthropicResponse *anthropic_run_inference(char *api_key, char *model, size_t ma
     return resp;
 
 cleanup:
+    if (NULL != json_buf) {
+        free(json_buf->buffer);
+        free(json_buf);
+    }
     if (NULL != v) {
         free_json_value(v);
     }
@@ -537,36 +625,72 @@ cleanup:
 
 // function to map agent conversation to anthropic conversation.
 // must be freed by caller.
+// TODO: pass in error stream for helpful error output
 AnthropicMessage *agent_messages_to_anthropic_messages(const Conversation *conv) {
-    if (NULL == conv->messages || conv->message_count == 0) {
+    if (NULL == conv || 0 == conv->message_count || NULL == conv->messages) {
         return NULL;
     }
     AnthropicMessage *anthropic_messages = calloc(conv->message_count, sizeof(AnthropicMessage));
+    if (NULL == anthropic_messages) {
+        return NULL;
+    }
     for (size_t i = 0; i < conv->message_count; i++) {
-        anthropic_messages[i].content = calloc(1, sizeof(AnthropicContent));
+        anthropic_messages[i].content_blocks = calloc(conv->messages[i].content_count, sizeof(AnthropicContent));
+        if (NULL == anthropic_messages[i].content_blocks) {
+            goto cleanup;
+        }
+        if (NULL == conv->messages[i].content_blocks || 0 == conv->messages[i].content_count) {
+            goto cleanup;
+        }
+
+        anthropic_messages[i].content_count = conv->messages[i].content_count;
         switch (conv->messages[i].role) {
-        case USER:
-            anthropic_messages[i].role = ANTHROPIC_ROLE_USER;
-            anthropic_messages[i].content->type = ANTHROPIC_CONTENT_TEXT;
-            anthropic_messages[i].content->as.text.text = strdup(conv->messages[i].message);
-            break;
-        case ASSISTANT:
-            anthropic_messages[i].role = ANTHROPIC_ROLE_ASSISTANT;
-            anthropic_messages[i].content->type = ANTHROPIC_CONTENT_TEXT;
-            anthropic_messages[i].content->as.text.text = strdup(conv->messages[i].message);
-            break;
-        case SYSTEM:
-            anthropic_messages[i].role = ANTHROPIC_ROLE_SYSTEM;
-            anthropic_messages[i].content->type = ANTHROPIC_CONTENT_TEXT;
-            anthropic_messages[i].content->as.text.text = strdup(conv->messages[i].message);
-            break;
-        case TOOL:
-            anthropic_messages[i].role = ANTHROPIC_ROLE_USER;
-            break;
+            case SYSTEM:
+                anthropic_messages[i].role = ANTHROPIC_ROLE_SYSTEM;
+                break;
+            case USER:
+                anthropic_messages[i].role = ANTHROPIC_ROLE_USER;
+                break;
+            case ASSISTANT:
+                anthropic_messages[i].role = ANTHROPIC_ROLE_ASSISTANT;
+                break;
+            default:
+                goto cleanup;
+        }
+
+        for (size_t j = 0; j < conv->messages[i].content_count; j++) {
+            const Content *src = &conv->messages[i].content_blocks[j];
+            AnthropicContent *dest = &anthropic_messages[i].content_blocks[j];
+            switch (src->type) {
+                case TEXT:
+                    dest->type = ANTHROPIC_CONTENT_TEXT;
+                    dest->as.text.text = strdup(src->as.text.text);
+                    break;
+                case TOOL_CALL:
+                    dest->type = ANTHROPIC_CONTENT_TOOL_USE;
+                    dest->as.tool_use.id = src->as.tool_call.id;
+                    dest->as.tool_use.name = src->as.tool_call.name;
+                    dest->as.tool_use.input = src->as.tool_call.input;
+                    break;
+                case TOOL_RESULT:
+                    dest->type = ANTHROPIC_CONTENT_TOOL_RESULT;
+                    dest->as.tool_result.tool_use_id = src->as.tool_result.tool_use_id;
+                    dest->as.tool_result.content = src->as.tool_result.content;
+                    dest->as.tool_result.is_error = src->as.tool_result.is_error;
+                    break;
+                default:
+                    goto cleanup;
+            }
         }
     }
 
     return anthropic_messages;
+cleanup:
+    for (size_t i = 0; i < conv->message_count; i++) {
+        free_anthropic_content(anthropic_messages[i].content_blocks);
+    }
+    free(anthropic_messages);
+    return NULL;
 }
 
 // Generates a list of anthropic tool structs based on a list of agent tool structs.
@@ -719,7 +843,7 @@ cleanup:
     }
     if (NULL != anthropic_messages) {
         for (size_t i = 0; i < conv->message_count; i++) {
-            free_anthropic_content(anthropic_messages[i].content);
+            free_anthropic_content(anthropic_messages[i].content_blocks);
         }
         free(anthropic_messages);
     }

@@ -7,16 +7,17 @@
 #include <stdatomic.h>
 
 typedef enum AnthropicMessageRole {
+    ANTHROPIC_ROLE_UNKNOWN = 0,
     ANTHROPIC_ROLE_SYSTEM,
     ANTHROPIC_ROLE_USER,
     ANTHROPIC_ROLE_ASSISTANT,
 } AnthropicMessageRole;
 
 typedef enum {
+    ANTHROPIC_CONTENT_UNKNOWN = 0,
     ANTHROPIC_CONTENT_TEXT,
     ANTHROPIC_CONTENT_TOOL_USE,
     ANTHROPIC_CONTENT_TOOL_RESULT,
-    ANTHROPIC_CONTENT_UNKNOWN,
 } AnthropicContentType;
 
 typedef struct {
@@ -36,7 +37,8 @@ typedef struct {
 
 typedef struct  {
     AnthropicMessageRole role;
-    AnthropicContent *content;
+    AnthropicContent *content_blocks;
+    size_t content_count;
 } AnthropicMessage;
 
 typedef struct {
@@ -99,7 +101,7 @@ typedef struct {
 AnthropicContext *create_anthropic_context(char *api_key, char *model);
 void free_anthropic_context(void *context);
 
-size_t serialize_anthropic_request(char *body_buf, size_t buffer_len, AnthropicRequest *request);
+int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *request);
 AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_stream);
 void free_anthropic_response(AnthropicResponse *resp);
 
@@ -109,7 +111,5 @@ AnthropicResponse *anthropic_run_inference(char *api_key, char *model, size_t ma
 
 // fulfills contract for provider-agnostic agent
 void anthropic_complete_inference(void *context, const Conversation *conv, const ToolSet *tools, InferenceResponse *out);
-
-void Run(void);
 
 #endif
