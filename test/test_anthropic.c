@@ -165,8 +165,8 @@ void test_serialize_request_body_tool_definition(void) {
     TEST_ASSERT_EQUAL_INT(0, err);
     TEST_ASSERT_EQUAL_STRING(
         "{\"model\": \"claude-opus-4-8\", \"max_tokens\": 1024, "
-        "\"tools\": [{\"name\":\"read_file\","
-        "\"description\":\"Read the contents of a relative file path.\","
+        "\"tools\": [{\"name\": \"read_file\","
+        "\"description\": \"Read the contents of a relative file path.\","
         "\"input_schema\": {\"type\":\"object\","
         "\"properties\":{\"path\":{\"type\":\"string\"}},"
         "\"required\":[\"path\"]}}]}",

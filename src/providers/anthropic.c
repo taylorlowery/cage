@@ -39,8 +39,48 @@ const char *role_to_string(AnthropicMessageRole role) {
     }
 }
 
-// serialize_request_body writes the contents of an AnthropicRequest
-// to a buffer as a JSON string.
+// serialize_anthropic_request writes an Anthropic Messages API request to body_buf.
+// The content-block structure follows Anthropic's tool-use documentation:
+// https://platform.claude.com/docs/en/agents-and-tools/tool-use/build-a-tool-using-agent
+//
+// Representative output:
+// {
+//   "model": "claude-opus-4-8",
+//   "max_tokens": 1024,
+//   "tools": [{
+//     "name": "read_file",
+//     "description": "Read the contents of a relative file path.",
+//     "input_schema": {
+//       "type": "object",
+//       "properties": {"path": {"type": "string"}},
+//       "required": ["path"]
+//     }
+//   }],
+//   "messages": [
+//     {
+//       "role": "user",
+//       "content": [{"type": "text", "text": "Read README.md"}]
+//     },
+//     {
+//       "role": "assistant",
+//       "content": [{
+//         "type": "tool_use",
+//         "id": "toolu_123",
+//         "name": "read_file",
+//         "input": {"path": "README.md"}
+//       }]
+//     },
+//     {
+//       "role": "user",
+//       "content": [{
+//         "type": "tool_result",
+//         "tool_use_id": "toolu_123",
+//         "content": "file contents",
+//         "is_error": false
+//       }]
+//     }
+//   ]
+// }
 int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *request) {
     if (NULL == body_buf || NULL == request || NULL == request->model) {
         return -1;
@@ -105,56 +145,97 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
 
                 switch (content->type) {
                 case ANTHROPIC_CONTENT_TEXT:
-                    if (NULL == content->as.text.text ||
-                        0 != append_bytes_to_serializer_buffer(body_buf,
-                                                                "{ \"type\": \"text\", \"text\": ",
-                                                                strlen("{ \"type\": \"text\", \"text\": ")) ||
-                        0 != append_json_string_to_serializer_buffer(body_buf,
-                                                                       content->as.text.text) ||
-                        0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
+                    if (NULL == content->as.text.text) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(
+                                 body_buf, "{ \"type\": \"text\", \"text\": ",
+                                 strlen("{ \"type\": \"text\", \"text\": "))) {
+                        return -1;
+                    }
+                    if (0 != append_json_string_to_serializer_buffer(body_buf,
+                                                                       content->as.text.text)) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
                         return -1;
                     }
                     break;
                 case ANTHROPIC_CONTENT_TOOL_USE:
-                    if (NULL == content->as.tool_use.id || NULL == content->as.tool_use.name ||
-                        NULL == content->as.tool_use.input ||
-                        0 != append_bytes_to_serializer_buffer(body_buf,
-                                                                "{ \"type\": \"tool_use\", \"id\": ",
-                                                                strlen("{ \"type\": \"tool_use\", \"id\": ")) ||
-                        0 != append_json_string_to_serializer_buffer(body_buf,
-                                                                       content->as.tool_use.id) ||
-                        0 != append_bytes_to_serializer_buffer(body_buf, ", \"name\": ",
-                                                                strlen(", \"name\": ")) ||
-                        0 != append_json_string_to_serializer_buffer(body_buf,
-                                                                       content->as.tool_use.name) ||
-                        0 != append_bytes_to_serializer_buffer(body_buf, ", \"input\": ",
-                                                                strlen(", \"input\": ")) ||
-                        0 != append_bytes_to_serializer_buffer(body_buf,
+                    if (NULL == content->as.tool_use.id) {
+                        return -1;
+                    }
+                    if (NULL == content->as.tool_use.name) {
+                        return -1;
+                    }
+                    if (NULL == content->as.tool_use.input) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(
+                                 body_buf, "{ \"type\": \"tool_use\", \"id\": ",
+                                 strlen("{ \"type\": \"tool_use\", \"id\": "))) {
+                        return -1;
+                    }
+                    if (0 != append_json_string_to_serializer_buffer(body_buf,
+                                                                       content->as.tool_use.id)) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"name\": ",
+                                                                strlen(", \"name\": "))) {
+                        return -1;
+                    }
+                    if (0 != append_json_string_to_serializer_buffer(body_buf,
+                                                                       content->as.tool_use.name)) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"input\": ",
+                                                                strlen(", \"input\": "))) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(body_buf,
                                                                 content->as.tool_use.input,
-                                                                strlen(content->as.tool_use.input)) ||
-                        0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
+                                                                strlen(content->as.tool_use.input))) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
                         return -1;
                     }
                     break;
                 case ANTHROPIC_CONTENT_TOOL_RESULT:
-                    if (NULL == content->as.tool_result.tool_use_id ||
-                        NULL == content->as.tool_result.content ||
-                        0 != append_bytes_to_serializer_buffer(body_buf,
-                                                                "{ \"type\": \"tool_result\", \"tool_use_id\": ",
-                                                                strlen("{ \"type\": \"tool_result\", \"tool_use_id\": ")) ||
-                        0 != append_json_string_to_serializer_buffer(
-                                 body_buf, content->as.tool_result.tool_use_id) ||
-                        0 != append_bytes_to_serializer_buffer(body_buf, ", \"is_error\": ",
-                                                                strlen(", \"is_error\": ")) ||
-                        0 != append_bytes_to_serializer_buffer(
+                    if (NULL == content->as.tool_result.tool_use_id) {
+                        return -1;
+                    }
+                    if (NULL == content->as.tool_result.content) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(
+                                 body_buf, "{ \"type\": \"tool_result\", \"tool_use_id\": ",
+                                 strlen("{ \"type\": \"tool_result\", \"tool_use_id\": "))) {
+                        return -1;
+                    }
+                    if (0 != append_json_string_to_serializer_buffer(
+                                 body_buf, content->as.tool_result.tool_use_id)) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"is_error\": ",
+                                                                strlen(", \"is_error\": "))) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(
                                  body_buf,
                                  content->as.tool_result.is_error ? "true" : "false",
-                                 content->as.tool_result.is_error ? 4 : 5) ||
-                        0 != append_bytes_to_serializer_buffer(body_buf, ", \"content\": ",
-                                                                strlen(", \"content\": ")) ||
-                        0 != append_json_string_to_serializer_buffer(
-                                 body_buf, content->as.tool_result.content) ||
-                        0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
+                                 content->as.tool_result.is_error ? 4 : 5)) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"content\": ",
+                                                                strlen(", \"content\": "))) {
+                        return -1;
+                    }
+                    if (0 != append_json_string_to_serializer_buffer(
+                                 body_buf, content->as.tool_result.content)) {
+                        return -1;
+                    }
+                    if (0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
                         return -1;
                     }
                     break;
@@ -178,8 +259,55 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
     }
 
     if (request->tool_count > 0) {
-        // Tool definition serialization is still pending.
-        return -1;
+        if (NULL == request->tools) {
+            return -1;
+        }
+        if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"tools\": [", strlen(", \"tools\": ["))) {
+            return -1;
+        }
+        for (size_t i = 0; i < request->tool_count; i++) {
+            if (NULL == request->tools[i].name || NULL == request->tools[i].description || NULL == request->tools[i].input_schema) {
+                return -1;
+            }
+            if (0 != append_char_to_serializer_buffer(body_buf, '{')) {
+                return -1;
+            }
+            if (0 != append_bytes_to_serializer_buffer(body_buf, "\"name\": ", strlen("\"name\": "))) {
+                return -1;
+            }
+            if (0 != append_json_string_to_serializer_buffer(body_buf, request->tools[i].name)) {
+                return -1;
+            }
+            if (0 != append_char_to_serializer_buffer(body_buf, ',')) {
+                return -1;
+            }
+            if (0 != append_bytes_to_serializer_buffer(body_buf, "\"description\": ", strlen("\"description\": "))) {
+                return -1;
+            }
+            if (0 != append_json_string_to_serializer_buffer(body_buf, request->tools[i].description)) {
+                return -1;
+            }
+            if (0 != append_char_to_serializer_buffer(body_buf, ',')) {
+                return -1;
+            }
+            if (0 != append_bytes_to_serializer_buffer(body_buf, "\"input_schema\": ", strlen("\"input_schema\": "))) {
+                return -1;
+            }
+            if (0 != append_bytes_to_serializer_buffer(body_buf, request->tools[i].input_schema, strlen(request->tools[i].input_schema))) {
+                return -1;
+            }
+            if (0 != append_char_to_serializer_buffer(body_buf, '}')) {
+                return -1;
+            }
+            if (i < request->tool_count - 1) {
+                if (0 != append_char_to_serializer_buffer(body_buf, ',')) {
+                    return -1;
+                }
+            }
+        }
+        if (0 != append_char_to_serializer_buffer(body_buf, ']')) {
+            return -1;
+        }
     }
 
     return append_char_to_serializer_buffer(body_buf, '}');
