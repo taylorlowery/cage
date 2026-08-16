@@ -17,13 +17,23 @@
 #define ANTHROPIC_MESSAGES_PATH "/v1/messages"
 #define REQUEST_BUFFER_LEN 8192
 
-static int copy_string(const char *src, char **dest, const char *field, FILE *error_stream) {
+static int copy_string(const char *src, char **dest) {
+    if (NULL == src) {
+        return -1;
+    }
     *dest = strdup(src);
     if (NULL == *dest) {
-        fprintf(error_stream, "failed to deserialize field '%s'\n", field);
         return -1;
     }
     return 0;
+}
+
+static int copy_field(const char *src, char **dest, const char *field, FILE *error_stream) {
+    int err = copy_string(src, dest);
+    if (0 != err) {
+        fprintf(error_stream, "failed to deserialize field '%s'\n", field);
+    }
+    return err;
 }
 
 const char *role_to_string(AnthropicMessageRole role) {
@@ -371,34 +381,34 @@ AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_s
         JsonValue *value = json->as.object->pairs[i].value;
         if (0 == strcmp(key, "id")) {
             if (value->type == JSON_STRING &&
-                0 != copy_string(value->as.string, &resp->id, "id", error_stream)) {
+                0 != copy_field(value->as.string, &resp->id, "id", error_stream)) {
                 goto cleanup;
             }
             continue;
         }
         if (0 == strcmp(key, "type")) {
             if (value->type == JSON_STRING &&
-                0 != copy_string(value->as.string, &resp->type, "type", error_stream)) {
+                0 != copy_field(value->as.string, &resp->type, "type", error_stream)) {
                 goto cleanup;
             }
             continue;
         }
         if (0 == strcmp(key, "role")) {
             if (value->type == JSON_STRING &&
-                0 != copy_string(value->as.string, &resp->role, "role", error_stream)) {
+                0 != copy_field(value->as.string, &resp->role, "role", error_stream)) {
                 goto cleanup;
             }
             continue;
         }
         if (0 == strcmp(key, "model")) {
             if (value->type == JSON_STRING &&
-                0 != copy_string(value->as.string, &resp->model, "model", error_stream)) {
+                0 != copy_field(value->as.string, &resp->model, "model", error_stream)) {
                 goto cleanup;
             }
             continue;
         }
         if (0 == strcmp(key, "stop_reason")) {
-            if (value->type == JSON_STRING && 0 != copy_string(value->as.string, &resp->stop_reason,
+            if (value->type == JSON_STRING && 0 != copy_field(value->as.string, &resp->stop_reason,
                                                                "stop_reason", error_stream)) {
                 goto cleanup;
             }
@@ -406,7 +416,7 @@ AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_s
         }
         if (0 == strcmp(key, "stop_sequence")) {
             if (value->type == JSON_STRING) {
-                if (0 != copy_string(value->as.string, &resp->stop_sequence, "stop_sequence",
+                if (0 != copy_field(value->as.string, &resp->stop_sequence, "stop_sequence",
                                      error_stream)) {
                     goto cleanup;
                 }
@@ -468,7 +478,7 @@ AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_s
                                     fprintf(error_stream, "text was not a string\n");
                                     goto cleanup;
                                 }
-                                if (0 != copy_string(current_pair.value->as.string, &resp->content[j].as.text.text,
+                                if (0 != copy_field(current_pair.value->as.string, &resp->content[j].as.text.text,
                                                 "content.text", error_stream)) {
                                     goto cleanup;
                                 }
@@ -477,7 +487,7 @@ AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_s
                         case ANTHROPIC_CONTENT_TOOL_USE:
                             if (0 == strcmp(current_pair.key, "id")) {
                                 if (current_pair.value->type != JSON_STRING ||
-                                    0 != copy_string(current_pair.value->as.string,
+                                    0 != copy_field(current_pair.value->as.string,
                                                      &resp->content[j].as.tool_use.id,
                                                      "content.tool_use.id", error_stream)) {
                                     fprintf(error_stream, "tool_use id was not a string\n");
@@ -485,7 +495,7 @@ AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_s
                                 }
                             } else if (0 == strcmp(current_pair.key, "name")) {
                                 if (current_pair.value->type != JSON_STRING ||
-                                    0 != copy_string(current_pair.value->as.string,
+                                    0 != copy_field(current_pair.value->as.string,
                                                      &resp->content[j].as.tool_use.name,
                                                      "content.tool_use.name", error_stream)) {
                                     fprintf(error_stream, "tool_use name was not a string\n");
@@ -509,7 +519,7 @@ AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_s
                         case ANTHROPIC_CONTENT_TOOL_RESULT:
                             if (0 == strcmp(current_pair.key, "tool_use_id")) {
                                 if (current_pair.value->type != JSON_STRING ||
-                                    0 != copy_string(current_pair.value->as.string,
+                                    0 != copy_field(current_pair.value->as.string,
                                                      &resp->content[j].as.tool_result.tool_use_id,
                                                      "content.tool_result.tool_use_id", error_stream)) {
                                     fprintf(error_stream, "tool_result tool_use_id was not a string\\n");
@@ -517,7 +527,7 @@ AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_s
                                 }
                             } else if (0 == strcmp(current_pair.key, "content")) {
                                 if (current_pair.value->type != JSON_STRING ||
-                                    0 != copy_string(current_pair.value->as.string,
+                                    0 != copy_field(current_pair.value->as.string,
                                                      &resp->content[j].as.tool_result.content,
                                                      "content.tool_result.content", error_stream)) {
                                     fprintf(error_stream, "tool_result content was not a string\\n");
@@ -598,7 +608,7 @@ cleanup:
     return NULL;
 }
 
-void free_anthropic_content(AnthropicContent *content) {
+void free_anthropic_content_internal(AnthropicContent *content) {
     if (NULL == content) {
         return;
     }
@@ -618,6 +628,13 @@ void free_anthropic_content(AnthropicContent *content) {
         default:
             break;
     }
+}
+
+void free_anthropic_content(AnthropicContent *content) {
+    if (NULL == content) {
+        return;
+    }
+    free_anthropic_content_internal(content);
     free(content);
 }
 
@@ -763,6 +780,7 @@ AnthropicMessage *agent_messages_to_anthropic_messages(const Conversation *conv)
         return NULL;
     }
     for (size_t i = 0; i < conv->message_count; i++) {
+
         anthropic_messages[i].content_blocks = calloc(conv->messages[i].content_count, sizeof(AnthropicContent));
         if (NULL == anthropic_messages[i].content_blocks) {
             goto cleanup;
@@ -792,18 +810,32 @@ AnthropicMessage *agent_messages_to_anthropic_messages(const Conversation *conv)
             switch (src->type) {
                 case TEXT:
                     dest->type = ANTHROPIC_CONTENT_TEXT;
-                    dest->as.text.text = strdup(src->as.text.text);
+                    if (0 != copy_string(src->as.text.text, &dest->as.text.text)) {
+                        goto cleanup;
+                    }
                     break;
                 case TOOL_CALL:
                     dest->type = ANTHROPIC_CONTENT_TOOL_USE;
-                    dest->as.tool_use.id = src->as.tool_call.id;
-                    dest->as.tool_use.name = src->as.tool_call.name;
-                    dest->as.tool_use.input = src->as.tool_call.input;
+                    if (0 != copy_string(src->as.tool_call.id, &dest->as.tool_use.id)) {
+                        goto cleanup;
+                    }
+                    if (0 != copy_string(src->as.tool_call.name, &dest->as.tool_use.name)) {
+                        goto cleanup;
+                    }
+                    if (0 != copy_string(src->as.tool_call.input, &dest->as.tool_use.input)) {
+                        goto cleanup;
+                    }
                     break;
                 case TOOL_RESULT:
                     dest->type = ANTHROPIC_CONTENT_TOOL_RESULT;
-                    dest->as.tool_result.tool_use_id = src->as.tool_result.tool_use_id;
-                    dest->as.tool_result.content = src->as.tool_result.content;
+                    if (0 != copy_string(src->as.tool_result.tool_use_id,
+                                         &dest->as.tool_result.tool_use_id)) {
+                        goto cleanup;
+                    }
+                    if (0 != copy_string(src->as.tool_result.content,
+                                         &dest->as.tool_result.content)) {
+                        goto cleanup;
+                    }
                     dest->as.tool_result.is_error = src->as.tool_result.is_error;
                     break;
                 default:
@@ -815,7 +847,11 @@ AnthropicMessage *agent_messages_to_anthropic_messages(const Conversation *conv)
     return anthropic_messages;
 cleanup:
     for (size_t i = 0; i < conv->message_count; i++) {
-        free_anthropic_content(anthropic_messages[i].content_blocks);
+        for (size_t j = 0; j < anthropic_messages[i].content_count; j++) {
+            AnthropicContent *content = &anthropic_messages[i].content_blocks[j];
+            free_anthropic_content_internal(content);
+        }
+        free(anthropic_messages[i].content_blocks);
     }
     free(anthropic_messages);
     return NULL;
@@ -866,6 +902,97 @@ cleanup:
     return NULL;
 }
 
+int anthropic_response_to_inference_response(AnthropicResponse *anthropic_response, InferenceResponse *out) {
+    if (NULL == anthropic_response || NULL == out) {
+        return -1;
+    }
+    if (NULL == anthropic_response->content || 0 == anthropic_response->content_count) {
+        set_inference_error(out, "no anthropic content to parse");
+        return -1;
+    }
+    out->content_blocks = calloc(anthropic_response->content_count, sizeof(Content));
+    if (NULL == out->content_blocks) {
+        set_inference_error(out, "failed to allocate agent content blocks.");
+        return -1;
+    }
+
+    out->content_count = anthropic_response->content_count;
+    for (size_t i = 0; i < anthropic_response->content_count; i++) {
+        const AnthropicContent anthro = anthropic_response->content[i];
+        Content *curr = &out->content_blocks[i];
+
+        switch (anthro.type) {
+        case ANTHROPIC_CONTENT_TEXT:
+            if (NULL == anthro.as.text.text) {
+                set_inference_error(out, "Anthropic text content was null.");
+                goto cleanup;
+            }
+            curr->type = TEXT;
+            curr->as.text.text = strdup(anthro.as.text.text);
+            if (NULL == curr->as.text.text) {
+                set_inference_error(out, "Failed to copy Anthropic text content.");
+                goto cleanup;
+            }
+            break;
+        case ANTHROPIC_CONTENT_TOOL_USE:
+            if (NULL == anthro.as.tool_use.id || NULL == anthro.as.tool_use.name ||
+                NULL == anthro.as.tool_use.input) {
+                set_inference_error(out, "Anthropic tool-use content was incomplete.");
+                goto cleanup;
+            }
+            curr->type = TOOL_CALL;
+            curr->as.tool_call.id = strdup(anthro.as.tool_use.id);
+            if (NULL == curr->as.tool_call.id) {
+                set_inference_error(out, "Failed to copy Anthropic tool-use ID.");
+                goto cleanup;
+            }
+            curr->as.tool_call.name = strdup(anthro.as.tool_use.name);
+            if (NULL == curr->as.tool_call.name) {
+                set_inference_error(out, "Failed to copy Anthropic tool name.");
+                goto cleanup;
+            }
+            curr->as.tool_call.input = strdup(anthro.as.tool_use.input);
+            if (NULL == curr->as.tool_call.input) {
+                set_inference_error(out, "Failed to copy Anthropic tool input.");
+                goto cleanup;
+            }
+            break;
+        case ANTHROPIC_CONTENT_TOOL_RESULT:
+            if (NULL == anthro.as.tool_result.tool_use_id ||
+                NULL == anthro.as.tool_result.content) {
+                out->error_message = "Anthropic tool-result content was incomplete.";
+                goto cleanup;
+            }
+            curr->type = TOOL_RESULT;
+            curr->as.tool_result.tool_use_id = strdup(anthro.as.tool_result.tool_use_id);
+            if (NULL == curr->as.tool_result.tool_use_id) {
+                set_inference_error(out, "Failed to copy Anthropic tool-use ID.");
+                goto cleanup;
+            }
+            curr->as.tool_result.content = strdup(anthro.as.tool_result.content);
+            if (NULL == curr->as.tool_result.content) {
+                set_inference_error(out, "Failed to copy Anthropic tool result.");
+                goto cleanup;
+            }
+            curr->as.tool_result.is_error = anthro.as.tool_result.is_error;
+            break;
+        default:
+            set_inference_error(out, "Unknown Anthropic content type.");
+            goto cleanup;
+        }
+    }
+
+    return 0;
+cleanup:
+    if (NULL != out && NULL != out->content_blocks) {
+        for (size_t i = 0 ; i < out->content_count; i++) {
+            free_content_fields(&out->content_blocks[i]);
+        }
+        free(out->content_blocks);
+    }
+    return -1;
+}
+
 AnthropicContext *create_anthropic_context(char *api_key, char *model) {
     if (NULL == api_key) {
         char *anthropic_api_key = getenv("ANTHROPIC_API_KEY");
@@ -904,7 +1031,7 @@ void anthropic_complete_inference(void *context, const Conversation *conv, const
         return;
     }
     if (NULL == context) {
-        out->error_message = "context was null";
+        set_inference_error(out, "context was null");
         return;
     }
     AnthropicContext *anthropic_ctx = context;
@@ -917,7 +1044,7 @@ void anthropic_complete_inference(void *context, const Conversation *conv, const
     // convert agent messages to anthropic messages
     anthropic_messages = agent_messages_to_anthropic_messages(conv);
     if (NULL == anthropic_messages) {
-        out->error_message = "unable to convert agent messages to anthropic messages";
+        set_inference_error(out, "unable to convert agent messages to anthropic messages");
         goto cleanup;
     }
 
@@ -927,7 +1054,7 @@ void anthropic_complete_inference(void *context, const Conversation *conv, const
         if (tool_count > 0) {
             anthropic_tools = agent_tools_to_anthropic_tools(tools);
             if (NULL == anthropic_tools) {
-                out->error_message = "unable to convert agent tools to anthropic tools";
+                set_inference_error(out, "unable to convert agent tools to anthropic tools");
                 goto cleanup;
             }
         }
@@ -939,29 +1066,34 @@ void anthropic_complete_inference(void *context, const Conversation *conv, const
                                                       conv->message_count, anthropic_tools, tool_count, stdout);
 
     if (NULL == resp) {
-        out->error_message = "anthropic_run_inference returned NULL";
+        set_inference_error(out, "anthropic_run_inference returned NULL");
         goto cleanup;
     }
 
     if (0 == strcmp("error", resp->type)) {
         if (NULL == resp->error) {
-            out->error_message =
-                "anthropic response indicated error type but parsed error was null";
+            set_inference_error(
+                out, "anthropic response indicated error type but parsed error was null");
             goto cleanup;
         }
 
         // set the out->error message to a single string combining the anthropic error fields.
         size_t len = snprintf(NULL, 0, "%s: %s", resp->error->type, resp->error->message);
         char *buf = calloc(len + 1, sizeof(char));
-        if (NULL != buf) {
-            snprintf(buf, len + 1, "%s: %s", resp->error->type, resp->error->message);
-            out->error_message = buf;
+        if (NULL == buf) {
+            set_inference_error(out, "failed to allocate Anthropic error message");
+            goto cleanup;
         }
+        snprintf(buf, len + 1, "%s: %s", resp->error->type, resp->error->message);
+        set_inference_error(out, buf);
+        free(buf);
     }
 
-    if (NULL != resp->content && resp->content_count > 0 &&
-        resp->content->type == ANTHROPIC_CONTENT_TEXT) {
-        out->text = resp->content->as.text.text ? strdup(resp->content->as.text.text) : NULL;
+    if (NULL != resp->content && resp->content_count > 0) {
+        if (0 != anthropic_response_to_inference_response(resp, out)) {
+            set_inference_error(out, "unable to parse content of anthropic response");
+            goto cleanup;
+        }
     }
     out->stop_reason = resp->stop_reason ? strdup(resp->stop_reason) : NULL;
 
@@ -971,6 +1103,9 @@ cleanup:
     }
     if (NULL != anthropic_messages) {
         for (size_t i = 0; i < conv->message_count; i++) {
+            for (size_t j = 0; j < anthropic_messages[i].content_count; j++) {
+                free_anthropic_content_internal(&anthropic_messages[i].content_blocks[j]);
+            }
             free_anthropic_content(anthropic_messages[i].content_blocks);
         }
         free(anthropic_messages);

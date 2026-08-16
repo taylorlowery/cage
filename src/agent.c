@@ -1,6 +1,7 @@
 #include "agent.h"
 #include "provider.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -8,6 +9,16 @@
 #define ANSI_USER_STYLE "\033[1;36m"
 #define ANSI_AGENT_STYLE "\033[1;35m"
 #define ANSI_CLEAR_STYLE "\033[0m"
+
+static void free_content_array(Content *content_blocks, size_t content_count) {
+    if (NULL == content_blocks) {
+        return;
+    }
+    for (size_t i = 0; i < content_count; i++) {
+        free_content_fields(&content_blocks[i]);
+    }
+    free(content_blocks);
+}
 
 void free_agent(Agent *agent) {
     if (NULL == agent) {
@@ -29,33 +40,62 @@ void free_agent(Agent *agent) {
 // (i.e, an 'ls' tool).
 // instead of args as a single string, probably needs to be KV pairs?
 // JSON parser should be able to deserialize the input into KV pairs.
-void call_tool(char *tool_name, char *args, char *out) {
+// Returns 0 if the handler succeeded, -1 if the handler fails.
+int call_tool(Agent *agent, const char *tool_name, const char *args, char *out, const size_t out_size) {
+    if (NULL == agent) {
+        fprintf(stderr, "tool call made against null agent\n");
+        return -1;
+    }
+    if (NULL == tool_name) {
+        fprintf(agent->error_stream, "tool call made with null tool name\n");
+        return -1;
+    }
+    if (NULL == agent->tools || NULL == agent->tools->tools) {
+        fprintf(agent->error_stream, "attempted to call tool '%s' on agent with a null toolset\n", tool_name);
+        return -1;
+    }
+    if (NULL == out || out_size <= 0) {
+        fprintf(agent->error_stream, "out argument is null or an invalid size was passed\n");
+        return -1;
+    }
+    for (size_t i = 0; i < agent->tools->tool_count; i++) {
+       const  Tool *tool = &agent->tools->tools[i];
+        if (NULL != tool->name && 0 == strcmp(tool_name, tool->name)) {
+            if (NULL == tool->handler) {
+                fprintf(agent->error_stream, "attempted to call tool '%s', but handler was NULL\n", tool_name);
+                return -1;
+            }
 
+            return tool->handler(args, out, out_size);
+        }
+    }
+    // TODO: pass in an error stream instead
+    fprintf(agent->error_stream, "invalid tool name: '%s'\n", tool_name);
+    return -1;
 }
 
 // allocates a new agent instance based on a given provider context.
 // caller must free.
-Agent *new_agent(char *display_name, InferenceProvider *client, FILE *input_stream,
+Agent *new_agent(char *display_name, InferenceProvider *client, ToolSet *tools, FILE *input_stream,
                  FILE *output_stream, FILE *error_stream) {
     Agent *agent = calloc(1, sizeof(Agent));
     if (NULL == agent) {
-        fprintf(stderr, "unable to allocate agent");
+        fprintf(stderr, "unable to allocate agent\n");
         return NULL;
     }
 
     agent->conversation = calloc(1, sizeof(Conversation));
     if (NULL == agent->conversation) {
-        fprintf(stderr, "unable to allocate conversation for agent");
+        fprintf(stderr, "unable to allocate conversation for agent\n");
         goto cleanup;
-        return NULL;
     }
 
     if (resize_conversation(agent->conversation) <= 0) {
-        fprintf(stderr, "failed to allocate conversation for agent");
+        fprintf(stderr, "failed to allocate conversation for agent\n");
         goto cleanup;
-        return NULL;
     }
 
+    agent->tools = tools;
     agent->client = client;
     agent->display_name = display_name ? display_name : DEFAULT_AGENT_NAME;
     agent->input_stream = input_stream;
@@ -89,7 +129,8 @@ void run(Agent *agent) {
     // greet;
     print_agent_message(agent, "Howdy, pilgrim!");
 
-    // instructions
+
+    // TODO: instructions/system prompt?
 
     // loop:
     while (true) {
@@ -107,6 +148,8 @@ void run(Agent *agent) {
         fflush(agent->output_stream);
         if (NULL == fgets(user_message_buf, sizeof(user_message_buf) - 1, agent->input_stream)) {
             fprintf(agent->error_stream, "error getting user input");
+            clear_inference_response(resp);
+            free(resp);
             break;
         }
         size_t user_message_len = strlen(user_message_buf);
@@ -114,53 +157,126 @@ void run(Agent *agent) {
             user_message_buf[user_message_len - 1] = '\0';
         }
 
-        add_message_to_conv(agent->conversation, user_message_buf, USER);
+        if (0 != add_message_to_conv(agent->conversation, user_message_buf, USER)) {
+            fprintf(agent->error_stream, "failed to add user message to conversation\n");
+            clear_inference_response(resp);
+            free(resp);
+            break;
+        }
+        clear_inference_response(resp);
 
         // send user message to LLM provider
         agent->client->complete_inference(agent->client->provider_context, agent->conversation, agent->tools,
                                           resp);
         if (NULL != resp->error_message) {
             fprintf(agent->error_stream, "%s", resp->error_message);
-            // free(user_message);
+            clear_inference_response(resp);
             free(resp);
             break;
         }
 
         // add response to conversation
-        add_message_to_conv(agent->conversation, resp->text, ASSISTANT);
+        if (0 != add_content_message_to_conv(agent->conversation, resp->content_blocks,
+                                              resp->content_count, ASSISTANT)) {
+            fprintf(agent->error_stream, "failed to add assistant response to conversation\n");
+            clear_inference_response(resp);
+            free(resp);
+            break;
+        }
 
         // call tools and send responses to LLM until all tools called
-        while (0 == strcmp(resp->stop_reason, "tool_use")) {
-            for (size_t i = 0; i < resp->tool_call_count; i++) {
-                char buf[4096];
-                call_tool(resp->tool_calls[i].tool_name, resp->tool_calls[i].tool_args, buf);
-
-                size_t buflen = strlen(buf);
-                // TODO: presumably the tool call could fill the buffer.
-                // We can consider resizing the buffer. We could just say we only support content up to this length.
-                buf[buflen] = '\0';
-
-                // add tool call result to conversation?
-                // TODO: correctly represent the tool use with its id, etc.,
-                // not just pass it as a string.
-                add_message_to_conv(agent->conversation, buf, USER);
-
-                // complete inference again with tool call result;
-                agent->client->complete_inference(agent->client->provider_context, agent->conversation, agent->tools,
-                                                resp);
-
-                if (NULL != resp->error_message) {
-                    fprintf(agent->error_stream, "%s", resp->error_message);
-                    // free(user_message);
-                    free(resp);
-                    break;
+        while (NULL != resp->stop_reason && 0 == strcmp(resp->stop_reason, "tool_use")) {
+            size_t tool_use_count = 0;
+            for (size_t i = 0; i < resp->content_count; i++) {
+                if (TOOL_CALL == resp->content_blocks[i].type) {
+                    tool_use_count++;
                 }
+            }
+            if (0 == tool_use_count) {
+                break;
+            }
+            Content *tool_use_content = calloc(tool_use_count, sizeof(Content));
+            if (NULL == tool_use_content) {
+                fprintf(agent->error_stream, "failed to allocate space for tool use calls.\n");
+                clear_inference_response(resp);
+                free(resp);
+                return;
+            }
+            size_t tool_use_index = 0;
+            for (size_t i = 0; i < resp->content_count; i++) {
+                Content *content = &resp->content_blocks[i];
+                if (content->type == TOOL_CALL) {
+
+                    char buf[4096] = {0};
+                    int call_err = call_tool(agent, content->as.tool_call.name,
+                                             content->as.tool_call.input, buf, sizeof(buf));
+
+                    Content *result = &tool_use_content[tool_use_index];
+                    result->type = TOOL_RESULT;
+                    result->as.tool_result.tool_use_id = strdup(content->as.tool_call.id);
+                    result->as.tool_result.is_error = (0 != call_err);
+                    if (0 != call_err) {
+                        result->as.tool_result.content = strdup("failed to call tool");
+                    } else {
+                        result->as.tool_result.content = strdup(buf);
+                    }
+                    if (NULL == result->as.tool_result.tool_use_id ||
+                        NULL == result->as.tool_result.content) {
+                        free_content_array(tool_use_content, tool_use_count);
+                        clear_inference_response(resp);
+                        free(resp);
+                        return;
+                    }
+                    tool_use_index++;
+                }
+            }
+
+            if (tool_use_index != tool_use_count) {
+                fprintf(agent->error_stream, "failed to build all tool results\n");
+                free_content_array(tool_use_content, tool_use_count);
+                clear_inference_response(resp);
+                free(resp);
+                return;
+            }
+
+            int add_err = add_content_message_to_conv(agent->conversation, tool_use_content,
+                                                       tool_use_count, USER);
+            free_content_array(tool_use_content, tool_use_count);
+            if (0 != add_err) {
+                fprintf(agent->error_stream, "failed to add tool result content to conversation\n");
+                clear_inference_response(resp);
+                free(resp);
+                return;
+            }
+
+            // The conversation now owns copies of the assistant response and tool results.
+            clear_inference_response(resp);
+            agent->client->complete_inference(agent->client->provider_context,
+                                              agent->conversation, agent->tools, resp);
+
+            if (NULL != resp->error_message) {
+                fprintf(agent->error_stream, "%s", resp->error_message);
+                clear_inference_response(resp);
+                free(resp);
+                return;
+            }
+
+            if (0 != add_content_message_to_conv(agent->conversation, resp->content_blocks,
+                                                  resp->content_count, ASSISTANT)) {
+                fprintf(agent->error_stream, "failed to add assistant response to conversation\n");
+                clear_inference_response(resp);
+                free(resp);
+                return;
             }
         }
 
-        // print final response
-        print_agent_message(agent, resp->text);
+        for (size_t i = 0; i < resp->content_count; i++) {
+            if (resp->content_blocks[i].type == TEXT) {
+                print_agent_message(agent, resp->content_blocks[i].as.text.text);
+            }
+        }
 
+        clear_inference_response(resp);
         free(resp);
     }
 }

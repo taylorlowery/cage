@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <string.h>
 
-static void free_content_fields(Content *content) {
+void free_content_fields(Content *content) {
     if (NULL == content) {
         return;
     }
@@ -150,4 +150,35 @@ int add_message_to_conv(Conversation *conv, const char *message, MessageRole rol
 
     Content content = {.type = TEXT, .as.text.text = (char *)message};
     return add_content_message_to_conv(conv, &content, 1, role);
+}
+
+void set_inference_error(InferenceResponse *resp, const char *message) {
+    if (NULL == resp || NULL == message) {
+        return;
+    }
+
+    char *copy = strdup(message);
+    if (NULL == copy) {
+        return;
+    }
+
+    free(resp->error_message);
+    resp->error_message = copy;
+}
+
+// free response fields for reuse, without deallocating response.
+void clear_inference_response(InferenceResponse *resp) {
+    if (NULL == resp) {
+        return;
+    }
+    free(resp->error_message);
+    free(resp->stop_reason);
+    for (size_t i = 0; i < resp->content_count; i++) {
+        free_content_fields(&resp->content_blocks[i]);
+    }
+    free(resp->content_blocks);
+    resp->error_message = NULL;
+    resp->stop_reason = NULL;
+    resp->content_blocks = NULL;
+    resp->content_count = 0;
 }

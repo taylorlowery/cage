@@ -14,12 +14,12 @@ typedef struct {
     FILE *error_stream;
 } Agent;
 
-Agent *new_agent(char *display_name, InferenceProvider *client, FILE *input_stream,
+Agent *new_agent(char *display_name, InferenceProvider *client, ToolSet *tools, FILE *input_stream,
                  FILE *output_stream, FILE *error_stream);
 
 void free_agent(Agent *agent);
 
-void call_tool(char *tool_name, char *args, char *out);
+int call_tool(Agent *agent, const char *tool_name, const char *args, char *out, const size_t out_size);
 
 void run(Agent *agent);
 

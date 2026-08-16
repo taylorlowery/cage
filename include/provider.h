@@ -25,6 +25,7 @@ typedef struct {
     char *name;
     char *description;
     char *input_schema;
+    int (*handler) (const char *args, char *out, size_t out_size);
 } Tool;
 
 typedef struct {
@@ -33,6 +34,7 @@ typedef struct {
 } ToolSet;
 
 typedef struct {
+    char *tool_call_id;
     char *tool_name;
     char *tool_args;
 } ToolCall;
@@ -66,11 +68,10 @@ typedef struct {
 
 
 typedef struct {
-    char *text;
+    Content *content_blocks;
+    size_t content_count;
     char *stop_reason;
     char *error_message;
-    ToolCall *tool_calls;
-    size_t tool_call_count;
 } InferenceResponse;
 
 typedef struct {
@@ -88,6 +89,9 @@ typedef struct {
 int resize_conversation(Conversation *conv);
 
 void free_conversation(Conversation *conv);
+void free_content_fields(Content *content);
+void set_inference_error(InferenceResponse *resp, const char *message);
+void clear_inference_response(InferenceResponse *resp);
 
 int add_content_message_to_conv(Conversation *conv, const Content *content_blocks,
                                  size_t content_count, MessageRole role);
