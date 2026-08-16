@@ -5,6 +5,7 @@ This is a simple coding agent based on Thorsten Ball's excellent article, [How t
 For transparency, I've included the AGENTS.md file I used when developing this project. Since this was a learning project, I wanted my IDE agent provide guidance and code review without writing the code for me. I had AI generate the file based on what I wanted to get out of this project, and for code style/correctness I asked it to help me aim at NASA's [The Power of 10: Rules for Developing Safety-Critical Code](https://web.eecs.umich.edu/~imarkov/10rules.pdf)(Gerard J. Holzmann, NASA/JPL). Aside from some tab-based autocomplete, I believe I typed just about every character in this project by hand.
 
 Edit: actually I ended up having AI write the more tedious unit tests.
+Edit 2: I also had AI generate the repetitive JSON deserialization code, what a chore.
 
 ### A note from Taylor before starting the project: 
 I chose this project because:

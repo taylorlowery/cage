@@ -9,11 +9,12 @@ LDFLAGS = $(OPENSSL_LDFLAGS)
 OUT = cage
 
 SRC_FILES = src/agent.c \
-			src/provider.c \
-			src/providers/anthropic.c \
-			src/http_client.c \
-			src/json/lexer.c \
-			src/json/parser.c
+			 src/provider.c \
+			 src/providers/anthropic.c \
+			 src/http_client.c \
+			 src/json/lexer.c \
+			 src/json/parser.c \
+			 src/json/serializer.c
 
 SRC = main.c $(SRC_FILES)
 
@@ -25,10 +26,11 @@ TEST_COMMON_SRC = $(SRC_FILES) $(UNITY_SRC)
 
 # binaries for each test file
 TEST_BINS = test_anthropic \
-			test_http_client \
-			test_parser \
-			test_lexer \
-			test_agent
+			 test_http_client \
+			 test_parser \
+			 test_lexer \
+			 test_agent \
+			 test_serializer
 
 VALGRIND = valgrind --leak-check=full --error-exitcode=1 --errors-for-leak-kinds=definite,indirect
 
