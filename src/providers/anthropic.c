@@ -638,13 +638,14 @@ void free_anthropic_content(AnthropicContent *content) {
     free(content);
 }
 
-void free_anthropic_message(AnthropicMessage *message)  {
+void free_anthropic_message(AnthropicMessage *message) {
     if (NULL == message) {
         return;
     }
     for (size_t i = 0; i < message->content_count; i++) {
-        free_anthropic_content(&message->content_blocks[i]);
+        free_anthropic_content_internal(&message->content_blocks[i]);
     }
+    free(message->content_blocks);
     free(message);
 }
 
@@ -1106,7 +1107,7 @@ cleanup:
             for (size_t j = 0; j < anthropic_messages[i].content_count; j++) {
                 free_anthropic_content_internal(&anthropic_messages[i].content_blocks[j]);
             }
-            free_anthropic_content(anthropic_messages[i].content_blocks);
+            free(anthropic_messages[i].content_blocks);
         }
         free(anthropic_messages);
     }

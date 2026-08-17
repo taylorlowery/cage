@@ -27,7 +27,7 @@ static int greet(const char *name, char **out) {
     }
 
     int actual_written = snprintf(*out, required, "Howdy, %s!", name);
-    if (actual_written < 0 || actual_written != required) {
+    if (actual_written < 0 || actual_written != to_be_written) {
         free(*out);
         *out = NULL;
         return -1;
@@ -36,7 +36,7 @@ static int greet(const char *name, char **out) {
 }
 
 void test_greet_tool(void) {
-    char *output;
+    char *output = NULL;
     TEST_ASSERT_EQUAL_INT(0, greet("Taylor", &output));
     TEST_ASSERT_EQUAL_STRING("Howdy, Taylor!", output);
 }
@@ -75,7 +75,7 @@ void test_call_tool_dispatch(void) {
     };
 
     Agent *agent = new_agent("Test Agent", NULL, &tools, stdin, stdout, stderr);
-    char *output;
+    char *output = NULL;
     int err = call_tool(agent, "greet", "Tater", &output);
     TEST_ASSERT_EQUAL(0, err);
     TEST_ASSERT_EQUAL_STRING("Howdy, Tater!", output);

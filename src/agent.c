@@ -50,6 +50,9 @@ int call_tool(Agent *agent, const char *tool_name, const char *args, char **out)
         fprintf(agent->error_stream, "tool call made with null tool name\n");
         return -1;
     }
+
+    fprintf(agent->output_stream, "Using my \"%s\" tool...", tool_name);
+
     if (NULL == agent->tools || NULL == agent->tools->tools) {
         fprintf(agent->error_stream, "attempted to call tool '%s' on agent with a null toolset\n", tool_name);
         return -1;
@@ -135,7 +138,7 @@ void run(Agent *agent) {
     // loop:
     while (true) {
         // get user input
-        fprintf(agent->output_stream, "%sYou:%s", ANSI_USER_STYLE, ANSI_CLEAR_STYLE);
+        fprintf(agent->output_stream, "%sYou:%s ", ANSI_USER_STYLE, ANSI_CLEAR_STYLE);
         // run inference
         InferenceResponse *resp = calloc(1, sizeof(InferenceResponse));
         if (NULL == resp) {
