@@ -19,7 +19,7 @@ Agent *new_agent(char *display_name, InferenceProvider *client, ToolSet *tools, 
 
 void free_agent(Agent *agent);
 
-int call_tool(Agent *agent, const char *tool_name, const char *args, char *out, const size_t out_size);
+int call_tool(Agent *agent, const char *tool_name, const char *args, char **out);
 
 void run(Agent *agent);
 

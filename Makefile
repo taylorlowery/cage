@@ -14,7 +14,9 @@ SRC_FILES = src/agent.c \
 			 src/http_client.c \
 			 src/json/lexer.c \
 			 src/json/parser.c \
-			 src/json/serializer.c
+			 src/json/serializer.c \
+			 src/string_builder.c \
+			 src/tools.c
 
 SRC = main.c $(SRC_FILES)
 
@@ -30,7 +32,8 @@ TEST_BINS = test_anthropic \
 			 test_parser \
 			 test_lexer \
 			 test_agent \
-			 test_serializer
+			 test_serializer \
+			 test_tools
 
 VALGRIND = valgrind --leak-check=full --error-exitcode=1 --errors-for-leak-kinds=definite,indirect
 

@@ -4,7 +4,7 @@
 #include "json.h"
 #include "http_client.h"
 #include "provider.h"
-#include <stdatomic.h>
+#include "string_builder.h"
 
 typedef enum AnthropicMessageRole {
     ANTHROPIC_ROLE_UNKNOWN = 0,
@@ -101,7 +101,7 @@ typedef struct {
 AnthropicContext *create_anthropic_context(char *api_key, char *model);
 void free_anthropic_context(void *context);
 
-int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *request);
+int serialize_anthropic_request(StringBuilder *body_buf, AnthropicRequest *request);
 AnthropicResponse *deserialize_anthropic_response(JsonValue *json, FILE *error_stream);
 void free_anthropic_response(AnthropicResponse *resp);
 

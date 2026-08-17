@@ -1,5 +1,6 @@
 #include "anthropic.h"
 #include "json.h"
+#include "string_builder.h"
 #include "vendor/unity/unity.h"
 #include "vendor/unity/unity_internals.h"
 
@@ -25,7 +26,7 @@ void test_serialize_request_body_single_message(void) {
         .messages = &message,
         .message_count = 1,
     };
-    SerializerBuffer buffer = {0};
+    StringBuilder buffer = {0};
 
     int err = serialize_anthropic_request(&buffer, &request);
 
@@ -57,7 +58,7 @@ void test_serialize_request_body_multiple_messages(void) {
         .messages = messages,
         .message_count = 4,
     };
-    SerializerBuffer buffer = {0};
+    StringBuilder buffer = {0};
 
     int err = serialize_anthropic_request(&buffer, &request);
 
@@ -96,7 +97,7 @@ void test_serialize_request_body_tool_use(void) {
         .messages = &message,
         .message_count = 1,
     };
-    SerializerBuffer buffer = {0};
+    StringBuilder buffer = {0};
 
     int err = serialize_anthropic_request(&buffer, &request);
 
@@ -130,7 +131,7 @@ void test_serialize_request_body_tool_result(void) {
         .messages = &message,
         .message_count = 1,
     };
-    SerializerBuffer buffer = {0};
+    StringBuilder buffer = {0};
 
     int err = serialize_anthropic_request(&buffer, &request);
 
@@ -158,7 +159,7 @@ void test_serialize_request_body_tool_definition(void) {
         .tools = &tool,
         .tool_count = 1,
     };
-    SerializerBuffer buffer = {0};
+    StringBuilder buffer = {0};
 
     int err = serialize_anthropic_request(&buffer, &request);
 

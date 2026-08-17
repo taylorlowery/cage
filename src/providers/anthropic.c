@@ -91,19 +91,19 @@ const char *role_to_string(AnthropicMessageRole role) {
 //     }
 //   ]
 // }
-int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *request) {
+int serialize_anthropic_request(StringBuilder *body_buf, AnthropicRequest *request) {
     if (NULL == body_buf || NULL == request || NULL == request->model) {
         return -1;
     }
 
-    if (0 != append_bytes_to_serializer_buffer(body_buf, "{\"model\": ",
+    if (0 != append_bytes_to_stringbuilder_buffer(body_buf, "{\"model\": ",
                                                 strlen("{\"model\": "))) {
         return -1;
     }
-    if (0 != append_json_string_to_serializer_buffer(body_buf, request->model)) {
+    if (0 != append_json_string_to_stringbuilder_buffer(body_buf, request->model)) {
         return -1;
     }
-    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"max_tokens\": ",
+    if (0 != append_bytes_to_stringbuilder_buffer(body_buf, ", \"max_tokens\": ",
                                                 strlen(", \"max_tokens\": "))) {
         return -1;
     }
@@ -112,14 +112,14 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
     int max_tokens_len = snprintf(max_tokens_buf, sizeof(max_tokens_buf), "%zu",
                                   request->max_tokens);
     if (max_tokens_len < 0 || (size_t)max_tokens_len >= sizeof(max_tokens_buf) ||
-        0 != append_bytes_to_serializer_buffer(body_buf, max_tokens_buf,
+        0 != append_bytes_to_stringbuilder_buffer(body_buf, max_tokens_buf,
                                                (size_t)max_tokens_len)) {
         return -1;
     }
 
     if (request->message_count > 0) {
         if (NULL == request->messages ||
-            0 != append_bytes_to_serializer_buffer(body_buf, ", \"messages\": [",
+            0 != append_bytes_to_stringbuilder_buffer(body_buf, ", \"messages\": [",
                                                     strlen(", \"messages\": ["))) {
             return -1;
         }
@@ -131,13 +131,13 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
                 return -1;
             }
 
-            if (0 != append_bytes_to_serializer_buffer(body_buf, "{ \"role\": ",
+            if (0 != append_bytes_to_stringbuilder_buffer(body_buf, "{ \"role\": ",
                                                         strlen("{ \"role\": "))) {
                 return -1;
             }
-            if (0 != append_json_string_to_serializer_buffer(body_buf,
+            if (0 != append_json_string_to_stringbuilder_buffer(body_buf,
                                                               role_to_string(message->role)) ||
-                0 != append_bytes_to_serializer_buffer(body_buf, ", \"content\": [",
+                0 != append_bytes_to_stringbuilder_buffer(body_buf, ", \"content\": [",
                                                         strlen(", \"content\": ["))) {
                 return -1;
             }
@@ -147,7 +147,7 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
                 int err = 0;
 
                 if (j > 0) {
-                    err = append_bytes_to_serializer_buffer(body_buf, ", ", 2);
+                    err = append_bytes_to_stringbuilder_buffer(body_buf, ", ", 2);
                 }
                 if (0 != err) {
                     return -1;
@@ -158,16 +158,16 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
                     if (NULL == content->as.text.text) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(
+                    if (0 != append_bytes_to_stringbuilder_buffer(
                                  body_buf, "{ \"type\": \"text\", \"text\": ",
                                  strlen("{ \"type\": \"text\", \"text\": "))) {
                         return -1;
                     }
-                    if (0 != append_json_string_to_serializer_buffer(body_buf,
+                    if (0 != append_json_string_to_stringbuilder_buffer(body_buf,
                                                                        content->as.text.text)) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
+                    if (0 != append_bytes_to_stringbuilder_buffer(body_buf, " }", 2)) {
                         return -1;
                     }
                     break;
@@ -181,33 +181,33 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
                     if (NULL == content->as.tool_use.input) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(
+                    if (0 != append_bytes_to_stringbuilder_buffer(
                                  body_buf, "{ \"type\": \"tool_use\", \"id\": ",
                                  strlen("{ \"type\": \"tool_use\", \"id\": "))) {
                         return -1;
                     }
-                    if (0 != append_json_string_to_serializer_buffer(body_buf,
+                    if (0 != append_json_string_to_stringbuilder_buffer(body_buf,
                                                                        content->as.tool_use.id)) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"name\": ",
+                    if (0 != append_bytes_to_stringbuilder_buffer(body_buf, ", \"name\": ",
                                                                 strlen(", \"name\": "))) {
                         return -1;
                     }
-                    if (0 != append_json_string_to_serializer_buffer(body_buf,
+                    if (0 != append_json_string_to_stringbuilder_buffer(body_buf,
                                                                        content->as.tool_use.name)) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"input\": ",
+                    if (0 != append_bytes_to_stringbuilder_buffer(body_buf, ", \"input\": ",
                                                                 strlen(", \"input\": "))) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(body_buf,
+                    if (0 != append_bytes_to_stringbuilder_buffer(body_buf,
                                                                 content->as.tool_use.input,
                                                                 strlen(content->as.tool_use.input))) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
+                    if (0 != append_bytes_to_stringbuilder_buffer(body_buf, " }", 2)) {
                         return -1;
                     }
                     break;
@@ -218,34 +218,34 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
                     if (NULL == content->as.tool_result.content) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(
+                    if (0 != append_bytes_to_stringbuilder_buffer(
                                  body_buf, "{ \"type\": \"tool_result\", \"tool_use_id\": ",
                                  strlen("{ \"type\": \"tool_result\", \"tool_use_id\": "))) {
                         return -1;
                     }
-                    if (0 != append_json_string_to_serializer_buffer(
+                    if (0 != append_json_string_to_stringbuilder_buffer(
                                  body_buf, content->as.tool_result.tool_use_id)) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"is_error\": ",
+                    if (0 != append_bytes_to_stringbuilder_buffer(body_buf, ", \"is_error\": ",
                                                                 strlen(", \"is_error\": "))) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(
+                    if (0 != append_bytes_to_stringbuilder_buffer(
                                  body_buf,
                                  content->as.tool_result.is_error ? "true" : "false",
                                  content->as.tool_result.is_error ? 4 : 5)) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"content\": ",
+                    if (0 != append_bytes_to_stringbuilder_buffer(body_buf, ", \"content\": ",
                                                                 strlen(", \"content\": "))) {
                         return -1;
                     }
-                    if (0 != append_json_string_to_serializer_buffer(
+                    if (0 != append_json_string_to_stringbuilder_buffer(
                                  body_buf, content->as.tool_result.content)) {
                         return -1;
                     }
-                    if (0 != append_bytes_to_serializer_buffer(body_buf, " }", 2)) {
+                    if (0 != append_bytes_to_stringbuilder_buffer(body_buf, " }", 2)) {
                         return -1;
                     }
                     break;
@@ -254,16 +254,16 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
                 }
             }
 
-            if (0 != append_bytes_to_serializer_buffer(body_buf, "]}", 2)) {
+            if (0 != append_bytes_to_stringbuilder_buffer(body_buf, "]}", 2)) {
                 return -1;
             }
             if (i + 1 < request->message_count &&
-                0 != append_bytes_to_serializer_buffer(body_buf, ", ", 2)) {
+                0 != append_bytes_to_stringbuilder_buffer(body_buf, ", ", 2)) {
                 return -1;
             }
         }
 
-        if (0 != append_char_to_serializer_buffer(body_buf, ']')) {
+        if (0 != append_char_to_stringbuilder_buffer(body_buf, ']')) {
             return -1;
         }
     }
@@ -272,55 +272,55 @@ int serialize_anthropic_request(SerializerBuffer *body_buf, AnthropicRequest *re
         if (NULL == request->tools) {
             return -1;
         }
-        if (0 != append_bytes_to_serializer_buffer(body_buf, ", \"tools\": [", strlen(", \"tools\": ["))) {
+        if (0 != append_bytes_to_stringbuilder_buffer(body_buf, ", \"tools\": [", strlen(", \"tools\": ["))) {
             return -1;
         }
         for (size_t i = 0; i < request->tool_count; i++) {
             if (NULL == request->tools[i].name || NULL == request->tools[i].description || NULL == request->tools[i].input_schema) {
                 return -1;
             }
-            if (0 != append_char_to_serializer_buffer(body_buf, '{')) {
+            if (0 != append_char_to_stringbuilder_buffer(body_buf, '{')) {
                 return -1;
             }
-            if (0 != append_bytes_to_serializer_buffer(body_buf, "\"name\": ", strlen("\"name\": "))) {
+            if (0 != append_bytes_to_stringbuilder_buffer(body_buf, "\"name\": ", strlen("\"name\": "))) {
                 return -1;
             }
-            if (0 != append_json_string_to_serializer_buffer(body_buf, request->tools[i].name)) {
+            if (0 != append_json_string_to_stringbuilder_buffer(body_buf, request->tools[i].name)) {
                 return -1;
             }
-            if (0 != append_char_to_serializer_buffer(body_buf, ',')) {
+            if (0 != append_char_to_stringbuilder_buffer(body_buf, ',')) {
                 return -1;
             }
-            if (0 != append_bytes_to_serializer_buffer(body_buf, "\"description\": ", strlen("\"description\": "))) {
+            if (0 != append_bytes_to_stringbuilder_buffer(body_buf, "\"description\": ", strlen("\"description\": "))) {
                 return -1;
             }
-            if (0 != append_json_string_to_serializer_buffer(body_buf, request->tools[i].description)) {
+            if (0 != append_json_string_to_stringbuilder_buffer(body_buf, request->tools[i].description)) {
                 return -1;
             }
-            if (0 != append_char_to_serializer_buffer(body_buf, ',')) {
+            if (0 != append_char_to_stringbuilder_buffer(body_buf, ',')) {
                 return -1;
             }
-            if (0 != append_bytes_to_serializer_buffer(body_buf, "\"input_schema\": ", strlen("\"input_schema\": "))) {
+            if (0 != append_bytes_to_stringbuilder_buffer(body_buf, "\"input_schema\": ", strlen("\"input_schema\": "))) {
                 return -1;
             }
-            if (0 != append_bytes_to_serializer_buffer(body_buf, request->tools[i].input_schema, strlen(request->tools[i].input_schema))) {
+            if (0 != append_bytes_to_stringbuilder_buffer(body_buf, request->tools[i].input_schema, strlen(request->tools[i].input_schema))) {
                 return -1;
             }
-            if (0 != append_char_to_serializer_buffer(body_buf, '}')) {
+            if (0 != append_char_to_stringbuilder_buffer(body_buf, '}')) {
                 return -1;
             }
             if (i < request->tool_count - 1) {
-                if (0 != append_char_to_serializer_buffer(body_buf, ',')) {
+                if (0 != append_char_to_stringbuilder_buffer(body_buf, ',')) {
                     return -1;
                 }
             }
         }
-        if (0 != append_char_to_serializer_buffer(body_buf, ']')) {
+        if (0 != append_char_to_stringbuilder_buffer(body_buf, ']')) {
             return -1;
         }
     }
 
-    return append_char_to_serializer_buffer(body_buf, '}');
+    return append_char_to_stringbuilder_buffer(body_buf, '}');
 }
 
 void free_anthropic_response(AnthropicResponse *resp) {
@@ -638,13 +638,14 @@ void free_anthropic_content(AnthropicContent *content) {
     free(content);
 }
 
-void free_anthropic_message(AnthropicMessage *message)  {
+void free_anthropic_message(AnthropicMessage *message) {
     if (NULL == message) {
         return;
     }
     for (size_t i = 0; i < message->content_count; i++) {
-        free_anthropic_content(&message->content_blocks[i]);
+        free_anthropic_content_internal(&message->content_blocks[i]);
     }
+    free(message->content_blocks);
     free(message);
 }
 
@@ -711,12 +712,12 @@ AnthropicResponse *anthropic_run_inference(char *api_key, char *model, size_t ma
     HTTPResponse *http_resp = NULL;
     JsonValue *v = NULL;
 
-    SerializerBuffer *json_buf = calloc(1, sizeof(SerializerBuffer));
+    StringBuilder *json_buf = calloc(1, sizeof(StringBuilder));
     if (NULL == json_buf) {
         fprintf(stderr, "Failed to allocate buffer for response\n");
         goto cleanup;
     }
-    resize_serializer_buffer(json_buf, 8192);
+    resize_stringbuilder_buffer(json_buf, 8192);
     int err = serialize_anthropic_request(json_buf, &request);
     if (0 != err) {
         fprintf(stderr, "Failed to allocate buffer for response\n");
@@ -1106,7 +1107,7 @@ cleanup:
             for (size_t j = 0; j < anthropic_messages[i].content_count; j++) {
                 free_anthropic_content_internal(&anthropic_messages[i].content_blocks[j]);
             }
-            free_anthropic_content(anthropic_messages[i].content_blocks);
+            free(anthropic_messages[i].content_blocks);
         }
         free(anthropic_messages);
     }
