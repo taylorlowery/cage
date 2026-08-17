@@ -6,6 +6,7 @@ For transparency, I've included the AGENTS.md file I used when developing this p
 
 Edit: actually I ended up having AI write the more tedious unit tests.
 Edit 2: I also had AI generate the repetitive JSON deserialization code, what a chore.
+Edit 3: Mea culpa, I used more AI towards the end.
 
 ### A note from Taylor before starting the project: 
 I chose this project because:
