@@ -415,3 +415,22 @@ JsonValue *parse_json(Parser *parser) {
     }
     return value;
 }
+
+// iterate through the key-value pairs of a json object and return
+// the value matching a given key.
+// Otherwise return NULL.
+JsonValue *get_json_object_value_by_key(const JsonObject *object, const char *key) {
+    if (NULL == key || NULL == object || NULL == object->pairs || 0 == object->count) {
+        return NULL;
+    }
+    for (size_t i = 0; i < object->count; i++) {
+        const char *pair_key = object->pairs[i].key;
+        if (NULL == pair_key) {
+            continue;
+        }
+        if (0 == strcmp(pair_key, key)) {
+            return object->pairs[i].value;
+        }
+    }
+    return NULL;
+}

@@ -25,7 +25,7 @@ typedef struct {
     char *name;
     char *description;
     char *input_schema;
-    int (*handler) (const char *args, char *out, size_t out_size);
+    int (*handler) (const char *args, char **out);
 } Tool;
 
 typedef struct {

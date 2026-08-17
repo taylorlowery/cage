@@ -10,22 +10,34 @@ void setUp(void) {
 void tearDown(void) {
 }
 
-static int greet(const char *name, char *out, size_t out_size) {
-    if (NULL == name || NULL == out || 0 == out_size) {
+static int greet(const char *name, char **out) {
+    if (NULL == name || NULL == out) {
+        return -1;
+    }
+    *out = NULL;
+    // add one space for \0
+    int to_be_written = snprintf(NULL, 0, "Howdy, %s!", name);
+    if (to_be_written < 0) {
+        return -1;
+    }
+    size_t required = (size_t)to_be_written + 1;
+    *out = calloc(required, sizeof(char));
+    if (NULL == *out) {
         return -1;
     }
 
-    int written = snprintf(out, out_size, "Howdy, %s!", name);
-    if (written < 0 || (size_t)written >= out_size) {
+    int actual_written = snprintf(*out, required, "Howdy, %s!", name);
+    if (actual_written < 0 || actual_written != required) {
+        free(*out);
+        *out = NULL;
         return -1;
     }
     return 0;
 }
 
 void test_greet_tool(void) {
-    char output[64];
-
-    TEST_ASSERT_EQUAL_INT(0, greet("Taylor", output, sizeof(output)));
+    char *output;
+    TEST_ASSERT_EQUAL_INT(0, greet("Taylor", &output));
     TEST_ASSERT_EQUAL_STRING("Howdy, Taylor!", output);
 }
 
@@ -63,8 +75,8 @@ void test_call_tool_dispatch(void) {
     };
 
     Agent *agent = new_agent("Test Agent", NULL, &tools, stdin, stdout, stderr);
-    char output[64];
-    int err = call_tool(agent, "greet", "Tater", output, sizeof(output));
+    char *output;
+    int err = call_tool(agent, "greet", "Tater", &output);
     TEST_ASSERT_EQUAL(0, err);
     TEST_ASSERT_EQUAL_STRING("Howdy, Tater!", output);
 

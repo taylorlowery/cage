@@ -41,7 +41,7 @@ void free_agent(Agent *agent) {
 // instead of args as a single string, probably needs to be KV pairs?
 // JSON parser should be able to deserialize the input into KV pairs.
 // Returns 0 if the handler succeeded, -1 if the handler fails.
-int call_tool(Agent *agent, const char *tool_name, const char *args, char *out, const size_t out_size) {
+int call_tool(Agent *agent, const char *tool_name, const char *args, char **out) {
     if (NULL == agent) {
         fprintf(stderr, "tool call made against null agent\n");
         return -1;
@@ -54,8 +54,8 @@ int call_tool(Agent *agent, const char *tool_name, const char *args, char *out, 
         fprintf(agent->error_stream, "attempted to call tool '%s' on agent with a null toolset\n", tool_name);
         return -1;
     }
-    if (NULL == out || out_size <= 0) {
-        fprintf(agent->error_stream, "out argument is null or an invalid size was passed\n");
+    if (NULL == out) {
+        fprintf(agent->error_stream, "out argument is null\n");
         return -1;
     }
     for (size_t i = 0; i < agent->tools->tool_count; i++) {
@@ -66,7 +66,7 @@ int call_tool(Agent *agent, const char *tool_name, const char *args, char *out, 
                 return -1;
             }
 
-            return tool->handler(args, out, out_size);
+            return tool->handler(args, out);
         }
     }
     // TODO: pass in an error stream instead
@@ -207,9 +207,9 @@ void run(Agent *agent) {
                 Content *content = &resp->content_blocks[i];
                 if (content->type == TOOL_CALL) {
 
-                    char buf[4096] = {0};
+                    char *buf;
                     int call_err = call_tool(agent, content->as.tool_call.name,
-                                             content->as.tool_call.input, buf, sizeof(buf));
+                                             content->as.tool_call.input, &buf);
 
                     Content *result = &tool_use_content[tool_use_index];
                     result->type = TOOL_RESULT;
