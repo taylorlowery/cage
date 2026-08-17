@@ -22,10 +22,10 @@ typedef enum {
 } MessageContentType;
 
 typedef struct {
-    char *name;
-    char *description;
-    char *input_schema;
-    int (*handler) (const char *args, char **out);
+    const char *name;
+    const char *description;
+    const char *input_schema;
+    int (*handler)(const char *args, char **out);
 } Tool;
 
 typedef struct {

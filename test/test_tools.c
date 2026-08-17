@@ -1,8 +1,10 @@
 #include "tools.h"
 #include "vendor/unity/unity.h"
 #include "vendor/unity/unity_internals.h"
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 void setUp(void) {
 }
@@ -27,8 +29,62 @@ void test_read_file_returns_fixture_contents(void) {
     free(contents);
 }
 
+void test_list_files_returns_directory_entries(void) {
+    const char *args = "{\"directory_path\":\"test/fixtures\"}";
+    char *listing = NULL;
+
+    int err = list_files(args, &listing);
+
+    TEST_ASSERT_EQUAL_INT(0, err);
+    TEST_ASSERT_NOT_NULL(listing);
+    TEST_ASSERT_NOT_NULL(strstr(listing, "the_last_hero.txt"));
+    TEST_ASSERT_NULL(strstr(listing, "\n.\n"));
+    free(listing);
+}
+
+void test_edit_file_replaces_unique_text(void) {
+    char filepath[] = "test/fixtures/edit_file_XXXXXX";
+    int file_descriptor = mkstemp(filepath);
+    TEST_ASSERT_TRUE(file_descriptor >= 0);
+
+    FILE *file = fdopen(file_descriptor, "w");
+    TEST_ASSERT_NOT_NULL(file);
+    TEST_ASSERT_TRUE(fputs("before\nkeep this line\n", file) >= 0);
+    TEST_ASSERT_EQUAL_INT(0, fclose(file));
+
+    char edit_args[1024];
+    int edit_args_length = snprintf(
+        edit_args, sizeof(edit_args),
+        "{\"path\":\"%s\",\"old_str\":\"before\",\"new_str\":\"after\"}",
+        filepath);
+    TEST_ASSERT_TRUE(edit_args_length > 0);
+    TEST_ASSERT_TRUE((size_t)edit_args_length < sizeof(edit_args));
+
+    char *result = NULL;
+    int err = edit_file(edit_args, &result);
+    TEST_ASSERT_EQUAL_INT(0, err);
+    TEST_ASSERT_EQUAL_STRING("OK", result);
+    free(result);
+
+    char read_args[1024];
+    int read_args_length = snprintf(read_args, sizeof(read_args),
+                                    "{\"filepath\":\"%s\"}", filepath);
+    TEST_ASSERT_TRUE(read_args_length > 0);
+    TEST_ASSERT_TRUE((size_t)read_args_length < sizeof(read_args));
+
+    char *contents = NULL;
+    err = read_file(read_args, &contents);
+    TEST_ASSERT_EQUAL_INT(0, err);
+    TEST_ASSERT_EQUAL_STRING("after\nkeep this line\n", contents);
+    free(contents);
+
+    TEST_ASSERT_EQUAL_INT(0, unlink(filepath));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_read_file_returns_fixture_contents);
+    RUN_TEST(test_list_files_returns_directory_entries);
+    RUN_TEST(test_edit_file_replaces_unique_text);
     return UNITY_END();
 }
