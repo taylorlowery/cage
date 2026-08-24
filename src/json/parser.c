@@ -98,26 +98,73 @@ static bool match(Parser *parser, TokenType token_type) {
 }
 
 // allocates a buffer, copies a token's string to it,
-// and returns a pointer to the buffer.
-// caller must free.
-static char *extract_token_str(Token token, FILE *error_stream) {
+// decodes JSON escape sequences (\n \t \r \b \f \" \\ \/) into
+// the corresponding bytes, and returns a pointer to the buffer.
+// caller must free. returns NULL on parser error.
+static char *extract_token_str(Parser *parser, Token token, FILE *error_stream) {
     char *buf = calloc(token.length + 1, sizeof(char));
     if (NULL == buf) {
         fprintf(error_stream, "unable to allocate buffer");
         return NULL;
     }
-    const char *start = token.start;
+    const char *src = token.start;
     int len = token.length;
-    // strip any quotes from start/end.
     if (*token.start == '"') {
-        start += 1;
+        src += 1;
         len -= 1;
     }
     if (len > 0 && *(token.start + token.length - 1) == '"') {
         len -= 1;
     }
-    memcpy(buf, start, len);
-    buf[len] = '\0';
+
+    size_t out = 0;
+    int i = 0;
+    while (i < len) {
+        char c = src[i];
+        if (c != '\\') {
+            buf[out++] = c;
+            i++;
+            continue;
+        }
+        if (i + 1 >= len) {
+            free(buf);
+            error_at(parser, &token, "incomplete escape sequence in string");
+            return NULL;
+        }
+        char esc = src[i + 1];
+        switch (esc) {
+        case '"':
+            buf[out++] = '"';
+            break;
+        case '\\':
+            buf[out++] = '\\';
+            break;
+        case '/':
+            buf[out++] = '/';
+            break;
+        case 'b':
+            buf[out++] = '\b';
+            break;
+        case 'f':
+            buf[out++] = '\f';
+            break;
+        case 'n':
+            buf[out++] = '\n';
+            break;
+        case 'r':
+            buf[out++] = '\r';
+            break;
+        case 't':
+            buf[out++] = '\t';
+            break;
+        default:
+            free(buf);
+            error_at(parser, &token, "invalid escape sequence in string");
+            return NULL;
+        }
+        i += 2;
+    }
+    buf[out] = '\0';
     return buf;
 }
 
@@ -210,7 +257,7 @@ static JsonPair *json_pair(Parser *parser) {
     }
     // consume key
     consume(parser, TOKEN_STRING, "expected string key for pair");
-    pair->key = extract_token_str(parser->previous, parser->error_stream);
+    pair->key = extract_token_str(parser, parser->previous, parser->error_stream);
     // consume colon
     consume(parser, TOKEN_COLON, "expected colon after string key");
     // consume value with json_value(parser, value);
@@ -358,14 +405,14 @@ static JsonValue *json_value(Parser *parser) {
         return value;
     case TOKEN_NUMBER: {
         value->type = JSON_NUMBER;
-        char *num_str = extract_token_str(parser->current, parser->error_stream);
+        char *num_str = extract_token_str(parser, parser->current, parser->error_stream);
         value->as.number = strtod(num_str, NULL);
         free(num_str);
         break;
     }
     case TOKEN_STRING:
         value->type = JSON_STRING;
-        value->as.string = extract_token_str(parser->current, parser->error_stream);
+        value->as.string = extract_token_str(parser, parser->current, parser->error_stream);
         break;
     case TOKEN_TRUE:
         value->type = JSON_BOOL;

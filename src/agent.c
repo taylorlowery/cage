@@ -33,6 +33,15 @@ void free_agent(Agent *agent) {
     }
     free(agent);
 }
+void print_agent_message(Agent *agent, char *message) {
+    fprintf(agent->output_stream, "%s%s:%s %s\n", ANSI_AGENT_STYLE, agent->display_name,
+            ANSI_CLEAR_STYLE, message);
+}
+
+void print_user_message(Agent *agent, char *message) {
+    fprintf(agent->output_stream, "%sYou:%s %s\n", ANSI_USER_STYLE, ANSI_CLEAR_STYLE, message);
+}
+
 
 // calls a function for an agent with the provided args,
 // and populates a provided buffer with the results.
@@ -51,7 +60,7 @@ int call_tool(Agent *agent, const char *tool_name, const char *args, char **out)
         return -1;
     }
 
-    fprintf(agent->output_stream, "Using my \"%s\" tool...", tool_name);
+    fprintf(agent->output_stream, "Using my \"%s\" tool...\n", tool_name);
 
     if (NULL == agent->tools || NULL == agent->tools->tools) {
         fprintf(agent->error_stream, "attempted to call tool '%s' on agent with a null toolset\n", tool_name);
@@ -108,15 +117,6 @@ Agent *new_agent(char *display_name, InferenceProvider *client, ToolSet *tools, 
 cleanup:
     free_agent(agent);
     return NULL;
-}
-
-void print_agent_message(Agent *agent, char *message) {
-    fprintf(agent->output_stream, "%s%s:%s %s\n", ANSI_AGENT_STYLE, agent->display_name,
-            ANSI_CLEAR_STYLE, message);
-}
-
-void print_user_message(Agent *agent, char *message) {
-    fprintf(agent->output_stream, "%sYou:%s %s\n", ANSI_USER_STYLE, ANSI_CLEAR_STYLE, message);
 }
 
 void run(Agent *agent) {
