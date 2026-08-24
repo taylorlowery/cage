@@ -1,6 +1,7 @@
 #include "json.h"
 #include "vendor/unity/unity.h"
 #include "vendor/unity/unity_internals.h"
+#include <string.h>
 
 void setUp(void) {
 }
@@ -287,8 +288,133 @@ void test_array_with_multiple_empty_objects(void) {
     free_json_value(v);
 }
 
+void test_parse_real_newline(void) {
+    const char *json = "{\"k\":\"a\\nb\"}";
+    Parser p;
+    init_parser(&p, json, stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    TEST_ASSERT_EQUAL_INT(JSON_OBJECT, v->type);
+    char *s = v->as.object->pairs[0].value->as.string;
+    TEST_ASSERT_EQUAL_INT(3, (int)strlen(s));
+    TEST_ASSERT_EQUAL_HEX8('a', s[0]);
+    TEST_ASSERT_EQUAL_HEX8('\n', s[1]);
+    TEST_ASSERT_EQUAL_HEX8('b', s[2]);
+    free_json_value(v);
+}
+
+void test_parse_tab_escape(void) {
+    const char *json = "{\"k\":\"a\\tb\"}";
+    Parser p;
+    init_parser(&p, json, stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    char *s = v->as.object->pairs[0].value->as.string;
+    TEST_ASSERT_EQUAL_INT(3, (int)strlen(s));
+    TEST_ASSERT_EQUAL_HEX8('\t', s[1]);
+    free_json_value(v);
+}
+
+void test_parse_carriage_return_escape(void) {
+    const char *json = "{\"k\":\"a\\rb\"}";
+    Parser p;
+    init_parser(&p, json, stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    char *s = v->as.object->pairs[0].value->as.string;
+    TEST_ASSERT_EQUAL_INT(3, (int)strlen(s));
+    TEST_ASSERT_EQUAL_HEX8('\r', s[1]);
+    free_json_value(v);
+}
+
+void test_parse_backspace_escape(void) {
+    const char *json = "{\"k\":\"a\\bb\"}";
+    Parser p;
+    init_parser(&p, json, stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    char *s = v->as.object->pairs[0].value->as.string;
+    TEST_ASSERT_EQUAL_INT(3, (int)strlen(s));
+    TEST_ASSERT_EQUAL_HEX8('\b', s[1]);
+    free_json_value(v);
+}
+
+void test_parse_formfeed_escape(void) {
+    const char *json = "{\"k\":\"a\\fb\"}";
+    Parser p;
+    init_parser(&p, json, stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    char *s = v->as.object->pairs[0].value->as.string;
+    TEST_ASSERT_EQUAL_INT(3, (int)strlen(s));
+    TEST_ASSERT_EQUAL_HEX8('\f', s[1]);
+    free_json_value(v);
+}
+
+void test_parse_quote_escape(void) {
+    const char *json = "{\"k\":\"a\\\"b\"}";
+    Parser p;
+    init_parser(&p, json, stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    char *s = v->as.object->pairs[0].value->as.string;
+    TEST_ASSERT_EQUAL_INT(3, (int)strlen(s));
+    TEST_ASSERT_EQUAL_HEX8('a', s[0]);
+    TEST_ASSERT_EQUAL_HEX8('"', s[1]);
+    TEST_ASSERT_EQUAL_HEX8('b', s[2]);
+    free_json_value(v);
+}
+
+void test_parse_backslash_escape(void) {
+    const char *json = "{\"k\":\"a\\\\b\"}";
+    Parser p;
+    init_parser(&p, json, stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    char *s = v->as.object->pairs[0].value->as.string;
+    TEST_ASSERT_EQUAL_INT(3, (int)strlen(s));
+    TEST_ASSERT_EQUAL_HEX8('a', s[0]);
+    TEST_ASSERT_EQUAL_HEX8('\\', s[1]);
+    TEST_ASSERT_EQUAL_HEX8('b', s[2]);
+    free_json_value(v);
+}
+
+void test_parse_forward_slash_escape(void) {
+    const char *json = "{\"k\":\"a\\/b\"}";
+    Parser p;
+    init_parser(&p, json, stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    char *s = v->as.object->pairs[0].value->as.string;
+    TEST_ASSERT_EQUAL_INT(3, (int)strlen(s));
+    TEST_ASSERT_EQUAL_STRING("a/b", s);
+    free_json_value(v);
+}
+
+void test_parse_multiple_escapes(void) {
+    const char *json = "{\"k\":\"line1\\nline2\\tend\\\\done\"}";
+    Parser p;
+    init_parser(&p, json, stdout);
+    JsonValue *v = parse_json(&p);
+    TEST_ASSERT_NOT_NULL(v);
+    char *s = v->as.object->pairs[0].value->as.string;
+    TEST_ASSERT_EQUAL_STRING("line1\nline2\tend\\done", s);
+    free_json_value(v);
+}
+
+void test_parse_invalid_escape_fails(void) {
+    const char *json = "{\"k\":\"\\q\"}";
+    char err_buf[256] = {0};
+    FILE *err_stream = fmemopen(err_buf, sizeof(err_buf), "w");
+    Parser p;
+    init_parser(&p, json, err_stream);
+    JsonValue *v = parse_json(&p);
+    fclose(err_stream);
+    TEST_ASSERT_NULL(v);
+    TEST_ASSERT_TRUE(p.had_error);
+}
+
 int main(void) {
-    UNITY_BEGIN();
     RUN_TEST(test_empty_object);
     RUN_TEST(test_empty_array);
     RUN_TEST(test_single_primitives);
@@ -311,6 +437,16 @@ int main(void) {
     RUN_TEST(test_anthropic_response);
     RUN_TEST(test_string_keys_and_values_have_no_quotes);
     RUN_TEST(test_array_with_multiple_empty_objects);
+    RUN_TEST(test_parse_real_newline);
+    RUN_TEST(test_parse_tab_escape);
+    RUN_TEST(test_parse_carriage_return_escape);
+    RUN_TEST(test_parse_backspace_escape);
+    RUN_TEST(test_parse_formfeed_escape);
+    RUN_TEST(test_parse_quote_escape);
+    RUN_TEST(test_parse_backslash_escape);
+    RUN_TEST(test_parse_forward_slash_escape);
+    RUN_TEST(test_parse_multiple_escapes);
+    RUN_TEST(test_parse_invalid_escape_fails);
     UNITY_END();
     return 0;
 }
